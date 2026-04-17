@@ -1,3 +1,5 @@
+'''It's forbidden to check a tile's value if the variant is not introducing the possibility of otherwise case. Like do not check if it's integer if the variant isn't adding string tiles. Do not check if the value is larger than zero if the variant isn't adding negative or zero tiles.'''
+
 from __future__ import annotations
 
 import os
@@ -58,7 +60,7 @@ class Tile:
             self.is_moving = False
 
     def update_animations(self) -> None:
-        if self.spawn_anim > 0:
+        if self.spawn_anim > 0 and self.is_visible:
             self.spawn_anim -= 1
         if self.merge_anim > 0 and self.is_visible:
             self.merge_anim -= 1
@@ -103,38 +105,28 @@ class Game2048(GameBase):
     name = "2048"
     variantsPath= "g2048s"
     def __init__(self, headless: bool = False) -> None:
+        # Configuration & Constants
         self.grid_size = 4
         self.padding = 18
-        self.end_screen_frames = 0
         self.end_screen_auto_reset = 120
-        self.frame_index = 0
-        self.end_reported = False
-        self.end_event_pending = False
-        self.score = 0
-        self.high_score = 0
         self.target_tile = 2048
-        self.tiles: list[Tile] = []
-        self.is_move_animating = False
         self.move_anim_total_frames = 6
-        self.move_anim_frame = 0
-        self.pending_board: list[list[Any]] | None = None
-        self.pending_score_gain = 0
-        self.pending_spawn = False
-        self.auto_plan: list[Direction] = []
-        self.auto_wait_frames = 0
-        self.auto_last_direction: Direction | None = None
-        self.auto_last_signature: tuple[tuple[Any, ...], ...] | None = None
-        self.auto_restart_wait_steps = -1
-        self.board: list[list[Any]] = [[0 for _ in range(self.grid_size)] for _ in range(self.grid_size)]
+        self.high_score = 0  # Must be initialized before reset() uses it
+        
+        # Initialization
         super().__init__(headless=headless)
         self.palette = self._make_palette()
         self.prev_action = self.BLANK_ACTION.copy()
+        
+        # All state variables (board, score, tiles, etc.) are set here
         self.reset()
 
     def reset(self) -> None:
         self.board = [[0 for _ in range(self.grid_size)] for _ in range(self.grid_size)]
         self.tiles = []
         self.score = 0
+        self.display_info_text = f"{self.name}  Score: 0  High Score: {self.high_score}"
+        self.pending_display_info_text = None
         self.high_score = max(self.high_score, self.score)
         self.frame_index = 0
         self.end_screen_frames = 0
@@ -142,9 +134,6 @@ class Game2048(GameBase):
         self.end_event_pending = False
         self.is_move_animating = False
         self.move_anim_frame = 0
-        self.pending_board = None
-        self.pending_score_gain = 0
-        self.pending_spawn = False
         self.auto_plan = []
         self.auto_wait_frames = 0
         self.auto_last_direction = None
@@ -196,7 +185,7 @@ class Game2048(GameBase):
         if incoming_direction is None:
             return False
 
-        new_board, gained, moved, tracks = self._simulate_move_with_tracks(incoming_direction)
+        new_board, gained, moved, tracks = self._simulate_move(incoming_direction, include_tracks=True)
         if not moved:
             return False
 
@@ -204,6 +193,7 @@ class Game2048(GameBase):
         for tr in tracks:
             destinations[(tr["to_r"], tr["to_c"])].append(tr)
 
+        self.board = new_board
         for (to_r, to_c), tr_list in destinations.items():
             if len(tr_list) == 1:
                 tr = tr_list[0]
@@ -221,10 +211,12 @@ class Game2048(GameBase):
                 new_tile.is_visible = False
                 new_tile.merge_anim = 8
                 self.tiles.append(new_tile)
+                self._create_tile_callback(merged_value, to_r, to_c)
 
-        self.pending_board = new_board
-        self.pending_score_gain = gained
-        self.pending_spawn = True
+        self.score += gained
+        self.high_score = max(self.high_score, self.score)
+        self.pending_display_info_text = f"{self.name}  Score: {self.score}  High Score: {self.high_score}"
+        self._spawn_tile(visible=False)
         self.move_anim_frame = 0
         self.is_move_animating = True
         return False
@@ -252,8 +244,7 @@ class Game2048(GameBase):
             tile.draw(self.screen, board_x, board_y, tile_size, self.padding, self.palette, tile_col)
 
         info_font = pygame.font.SysFont("consolas", 24, bold=True)
-        info = f"{self.name}  Score: {self.score}  High Score: {self.high_score}"
-        info_surf = info_font.render(info, True, self.palette["hud"])
+        info_surf = info_font.render(self.display_info_text, True, self.palette["hud"])
         self.screen.blit(info_surf, (18, 12))
 
         if self._is_game_over() and not self.is_move_animating:
@@ -318,7 +309,7 @@ class Game2048(GameBase):
 
         scored: list[tuple[int, Direction]] = []
         for direction in candidates:
-            sim_board, gained, moved = self._simulate_move(direction)
+            sim_board, gained, moved, _ = self._simulate_move(direction)
             if not moved:
                 continue
             score = self._evaluate_board(sim_board, gained, direction)
@@ -404,7 +395,7 @@ class Game2048(GameBase):
             action["D"] = True
         return action
 
-    def _spawn_tile(self) -> None:
+    def _spawn_tile(self, visible: bool = True) -> None:
         empty = [(r, c) for r in range(self.grid_size) for c in range(self.grid_size) if self.board[r][c] == 0]
         if not empty:
             return
@@ -414,37 +405,12 @@ class Game2048(GameBase):
 
         new_tile = Tile(value, r, c)
         new_tile.spawn_anim = 8
+        new_tile.is_visible = visible
         self.tiles.append(new_tile)
-
-    def _simulate_move(self, direction: Direction) -> tuple[list[list[Any]], int, bool]:
-        original = [row[:] for row in self.board]
-        board = [row[:] for row in self.board]
-        gained = 0
-
-        if direction in ("left", "right"):
-            for r in range(self.grid_size):
-                line = board[r][:]
-                if direction == "right":
-                    line.reverse()
-                merged, score_gain = self._merge_line(line)
-                if direction == "right":
-                    merged.reverse()
-                board[r] = merged
-                gained += score_gain
-        else:
-            for c in range(self.grid_size):
-                line = [board[r][c] for r in range(self.grid_size)]
-                if direction == "down":
-                    line.reverse()
-                merged, score_gain = self._merge_line(line)
-                if direction == "down":
-                    merged.reverse()
-                for r in range(self.grid_size):
-                    board[r][c] = merged[r]
-                gained += score_gain
-
-        moved = board != original
-        return board, gained, moved
+        self._create_tile_callback(value, r, c)
+        
+    def _create_tile_callback(self, value: Any, r: int, c: int) -> None:
+        '''For variants that need to do something when a new tile is created.'''
 
     def _finish_move_animation(self) -> None:
         self.is_move_animating = False
@@ -462,26 +428,18 @@ class Game2048(GameBase):
             new_tiles.append(tile)
         self.tiles = new_tiles
 
-        if self.pending_board is None:
-            return
+        if self.pending_display_info_text is not None:
+            self.display_info_text = self.pending_display_info_text
+            self.pending_display_info_text = None
 
-        self.board = self.pending_board
-        self.pending_board = None
-        self.score += self.pending_score_gain
-        self.pending_score_gain = 0
-
-        if self.pending_spawn:
-            self._spawn_tile()
-            self.pending_spawn = False
-
-        self.high_score = max(self.high_score, self.score)
         if self._is_game_over() and not self.end_reported:
             self.end_reported = True
             self.end_event_pending = True
 
-    def _simulate_move_with_tracks(
+    def _simulate_move(
         self,
         direction: Direction,
+        include_tracks: bool = False,
     ) -> tuple[list[list[Any]], int, bool, list[dict[str, Any]]]:
         original = [row[:] for row in self.board]
         board = [row[:] for row in self.board]
@@ -504,33 +462,38 @@ class Game2048(GameBase):
                 r, c = coord(line_id, idx)
                 values.append(board[r][c])
 
-            merged, score_gain, line_tracks = self._merge_line_with_tracks(values)
+            merged, score_gain, line_tracks = self._merge_line(values, include_tracks=include_tracks)
             gained += score_gain
 
             for idx in range(n):
                 r, c = coord(line_id, idx)
                 board[r][c] = merged[idx]
 
-            for tr in line_tracks:
-                fr, fc = coord(line_id, tr["from_idx"]) # type: ignore
-                to_r, to_c = coord(line_id, tr["to_idx"]) # type: ignore
-                tracks.append(
-                    {
-                        "value": tr["value"],
-                        "merged_value": tr["merged_value"],
-                        "from_r": fr,
-                        "from_c": fc,
-                        "to_r": to_r,
-                        "to_c": to_c,
-                    }
-                )
+            if include_tracks:
+                for tr in line_tracks:
+                    fr, fc = coord(line_id, tr["from_idx"])
+                    to_r, to_c = coord(line_id, tr["to_idx"])
+                    tracks.append(
+                        {
+                            "value": tr["value"],
+                            "merged_value": tr["merged_value"],
+                            "from_r": fr,
+                            "from_c": fc,
+                            "to_r": to_r,
+                            "to_c": to_c,
+                        }
+                    )
 
         moved = board != original
         if not moved:
             tracks = []
         return board, gained, moved, tracks
 
-    def _merge_line_with_tracks(self, line: list[Any]) -> tuple[list[Any], int, list[dict[str, Any]]]:
+    def _merge_line(
+        self,
+        line: list[Any],
+        include_tracks: bool = False,
+    ) -> tuple[list[Any], int, list[dict[str, Any]]]:
         compact: list[tuple[Any, int]] = []
         for idx, value in enumerate(line):
             if value != 0:
@@ -551,9 +514,10 @@ class Game2048(GameBase):
                 merged_value, gain = self._get_multi_merge_result(group_values)
                 merged.append(merged_value)
                 score_gain += gain
-                for j in range(take):
-                    source_value, source_idx = compact[i + j]
-                    tracks.append({"value": source_value, "merged_value": merged_value, "from_idx": source_idx, "to_idx": to_idx})
+                if include_tracks:
+                    for j in range(take):
+                        source_value, source_idx = compact[i + j]
+                        tracks.append({"value": source_value, "merged_value": merged_value, "from_idx": source_idx, "to_idx": to_idx})
                 i += take
                 merged_count = take
                 break
@@ -561,7 +525,8 @@ class Game2048(GameBase):
             if merged_count == 0:
                 value, src_idx = compact[i]
                 merged.append(value)
-                tracks.append({"value": value, "merged_value": value, "from_idx": src_idx, "to_idx": to_idx})
+                if include_tracks:
+                    tracks.append({"value": value, "merged_value": value, "from_idx": src_idx, "to_idx": to_idx})
                 i += 1
 
         merged.extend([0] * (self.grid_size - len(merged)))
@@ -595,39 +560,13 @@ class Game2048(GameBase):
             return False
         return any(self.target_tile in row for row in self.board)
 
-    def _merge_line(self, line: list[Any]) -> tuple[list[Any], int]:
-        compact = [v for v in line if v != 0]
-        merged: list[Any] = []
-        score_gain = 0
-        i = 0
-        while i < len(compact):
-            merged_count = 0
-            remaining = len(compact) - i
-            for take in range(remaining, 1, -1):
-                group_values = compact[i:i + take]
-                if not self._can_multi_merge(group_values):
-                    continue
-                value, gain = self._get_multi_merge_result(group_values)
-                merged.append(value)
-                score_gain += gain
-                i += take
-                merged_count = take
-                break
-
-            if merged_count == 0:
-                merged.append(compact[i])
-                i += 1
-
-        merged.extend([0] * (self.grid_size - len(merged)))
-        return merged, score_gain
-
     def _is_game_over(self) -> bool:
         if self._check_win_condition():
             return True
         if any(0 in row for row in self.board):
             return False
         for direction in ("up", "down", "left", "right"):
-            _, _, moved = self._simulate_move(direction)
+            _, _, moved, _ = self._simulate_move(direction)
             if moved:
                 return False
         return True

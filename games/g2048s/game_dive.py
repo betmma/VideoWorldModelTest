@@ -4,61 +4,41 @@ import os
 import random
 import sys
 from typing import Any
+from copy import copy
 
 import pygame
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
-from games.g2048 import Game2048
+from games.g2048 import Game2048, Tile
 
 
-class GameDivisorSeeds(Game2048):
+class GameDive(Game2048):
     name = "Dive"
     initial_seeds: set[int] = {2}
 
     def __init__(self, headless: bool = False) -> None:
         super().__init__(headless=headless)
         self.target_tile = 4096
-        self.seeds: set[int] = set(self.initial_seeds)
-        self.pending_new_tiles: list[int] = []
+        self.seeds: set[int] = copy(self.initial_seeds)
+        self.display_seeds: set[int] = copy(self.initial_seeds)
         self.reset()
 
     def reset(self) -> None:
-        self.seeds = set(self.initial_seeds)
-        self.pending_new_tiles = []
+        self.seeds = copy(self.initial_seeds)
+        self.display_seeds = copy(self.initial_seeds)
         super().reset()
 
-    def update(self, action):  # type: ignore[override]
-        was_animating = self.is_move_animating
-        had_pending = self.pending_board is not None
-
-        result = super().update(action)
-
-        if (
-            was_animating
-            and had_pending
-            and self.pending_board is not None
-            and self.is_move_animating
-            and not self.pending_new_tiles
-        ):
-            # A new move has just been accepted and pending_board now points to the new state.
-            self.pending_new_tiles = self._extract_created_tiles(self.board, self.pending_board)
-
-        return result
+    def _create_tile_callback(self, value: Any, r: int, c: int) -> None:
+        super()._create_tile_callback(value, r, c)
+        self._unlock_seeds_from_new_tiles([value])
+        self._sync_seeds_with_board()
 
     def _can_merge(self, val1: Any, val2: Any) -> bool:
-        if not isinstance(val1, int) or not isinstance(val2, int):
-            return False
-        if val1 <= 0 or val2 <= 0:
-            return False
-
         a = min(val1, val2)
         b = max(val1, val2)
         return b % a == 0
 
     def _get_merge_result(self, val1: Any, val2: Any) -> tuple[Any, int]:
-        if not isinstance(val1, int) or not isinstance(val2, int):
-            return val1, 0
-
         new_val = val1 + val2
         return new_val, new_val
 
@@ -69,14 +49,7 @@ class GameDivisorSeeds(Game2048):
 
     def _finish_move_animation(self) -> None:
         super()._finish_move_animation()
-
-        if not self.pending_new_tiles:
-            self._sync_seeds_with_board()
-            return
-
-        self._unlock_seeds_from_new_tiles(self.pending_new_tiles)
-        self.pending_new_tiles = []
-        self._sync_seeds_with_board()
+        self.display_seeds = copy(self.seeds)
 
     def _unlock_seeds_from_new_tiles(self, new_tiles: list[int]) -> None:
         for new_tile in new_tiles:
@@ -95,53 +68,21 @@ class GameDivisorSeeds(Game2048):
                 self.seeds.add(new_tile)
 
     def _sync_seeds_with_board(self) -> None:
-        present_values = [
-            value
-            for row in self.board
-            for value in row
-            if isinstance(value, int) and value > 0
-        ]
-
+        present_values = [value for row in self.board for value in row if value != 0]
         keep: set[int] = set()
         for seed in self.seeds:
             if seed <= 0:
                 continue
             if any(value % seed == 0 for value in present_values):
                 keep.add(seed)
-
         self.seeds = keep
         if not self.seeds:
-            self.seeds = set(self.initial_seeds)
-
-    def _extract_created_tiles(
-        self,
-        old_board: list[list[Any]],
-        new_board: list[list[Any]],
-    ) -> list[int]:
-        old_counts: dict[int, int] = {}
-        for row in old_board:
-            for value in row:
-                if isinstance(value, int) and value > 0:
-                    old_counts[value] = old_counts.get(value, 0) + 1
-
-        new_counts: dict[int, int] = {}
-        for row in new_board:
-            for value in row:
-                if isinstance(value, int) and value > 0:
-                    new_counts[value] = new_counts.get(value, 0) + 1
-
-        created: list[int] = []
-        for value, count in new_counts.items():
-            delta = count - old_counts.get(value, 0)
-            if delta > 0:
-                created.extend([value] * delta)
-
-        return created
+            self.seeds = self.initial_seeds
 
     def draw(self) -> None:
         super().draw()
 
-        seeds_sorted = sorted(self.seeds)
+        seeds_sorted = sorted(self.display_seeds)
         seed_text = "Seeds: " + (", ".join(str(seed) for seed in seeds_sorted) if seeds_sorted else "(none)")
 
         font = pygame.font.SysFont("consolas", 20, bold=True)
@@ -150,7 +91,7 @@ class GameDivisorSeeds(Game2048):
 
         bg_rect = text_rect.inflate(16, 8)
         bg = pygame.Surface((bg_rect.width, bg_rect.height), pygame.SRCALPHA)
-        bg.fill((0, 0, 0, 100))
+        bg.fill((0, 0, 0, 50))
         self.screen.blit(bg, bg_rect.topleft)
         self.screen.blit(text_surf, text_rect)
 
@@ -159,6 +100,6 @@ class GameDivisorSeeds(Game2048):
 
 
 if __name__ == "__main__":
-    from gameRunner import run_human_debug
+    from gameRunner import run_human_debug, run_autoplay
 
-    run_human_debug(GameDivisorSeeds)
+    run_human_debug(GameDive)
