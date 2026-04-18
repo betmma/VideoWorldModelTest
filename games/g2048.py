@@ -199,6 +199,7 @@ class Game2048(GameBase):
                 tr = tr_list[0]
                 tile = self._get_tile_at(tr["from_r"], tr["from_c"])
                 if tile:
+                    tile.value = tr["merged_value"]
                     tile.move_to(to_r, to_c)
             elif len(tr_list) > 1:
                 for tr in tr_list:
@@ -207,7 +208,7 @@ class Game2048(GameBase):
                         tile.move_to(to_r, to_c)
                         tile.to_delete = True
                 merged_value = tr_list[0]["merged_value"]
-                new_tile = Tile(merged_value, to_r, to_c)
+                new_tile = self._make_tile(merged_value, to_r, to_c)
                 new_tile.is_visible = False
                 new_tile.merge_anim = 8
                 self.tiles.append(new_tile)
@@ -403,12 +404,17 @@ class Game2048(GameBase):
         value = self._get_spawn_value()
         self.board[r][c] = value
 
-        new_tile = Tile(value, r, c)
+        new_tile = self._make_tile(value, r, c)
         new_tile.spawn_anim = 8
         new_tile.is_visible = visible
         self.tiles.append(new_tile)
         self._create_tile_callback(value, r, c)
         
+    def _make_tile(self, value: Any, r: int, c: int) -> Tile:
+        '''For variants that need to replace Tile with their own subclass.'''
+        tile = Tile(value, r, c)
+        return tile
+    
     def _create_tile_callback(self, value: Any, r: int, c: int) -> None:
         '''For variants that need to do something when a new tile is created.'''
 
