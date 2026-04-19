@@ -265,7 +265,7 @@ class Game2048(GameBase):
     def getPrompt(self) -> str:
         return (
             f"This is {self.name}. Use W/A/S/D or Arrow keys to slide all tiles in one direction. "
-            f"When two tiles with the same value collide, they merge into one tile with doubled value. After each valid move, a new tile appears in an empty cell. The game ends when there are no valid moves left. Reach the {self.target_tile} tile to win!"
+            f"When two tiles with the same value collide, they merge into one tile with doubled value. After each valid move, a new tile appears in an empty cell. The new tile is mostly 2, occasionally 4. The game ends when there are no valid moves left. Reach the {self.target_tile} tile to win!"
         )
 
     def getAutoAction(self) -> ActionState:
