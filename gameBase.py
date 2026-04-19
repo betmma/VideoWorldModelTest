@@ -14,6 +14,14 @@ class ActionState(TypedDict):
     LD: bool
     LR: bool
 
+'''
+When writing specific game, add below code at the end of the file to allow testing directly:
+if __name__ == "__main__":
+    # Allow testing directly
+    from gameRunner import run_human_debug, run_autoplay
+    run_autoplay(GameClassName)
+'''
+
 class GameBase(ABC):
     """Base contract for game simulation and rendering. The game cannot use actions other than the 8 defined in ActionState, but it can interpret them in any way. LU, LL, LD, LR are arrow keys representing up, left, down, right respectively."""
     
@@ -59,4 +67,4 @@ class GameBase(ABC):
         
     @abstractmethod
     def getAutoAction(self) -> ActionState:
-        """Implement the logical, somewhat randomized auto-play agent. It will be called every frame, but it does NOT need to perform action every time or act solely based on the current state. Instead, it must have internal state and act after proper time has passed to imitate a human player's reflections. Another point is that, if the game's action happens at key pressed down instead of holding key, auto action should only execute actions at multiples of 4 frames."""
+        """Implement the logical, somewhat randomized auto-play agent. It will be called every frame, but it does NOT need to perform action every time or act solely based on the current state. Instead, it must have internal state and act after proper time has passed to imitate a human player's reflections. Another point is that, if the game's action happens at key pressed down instead of holding key, auto action should only execute actions at multiples of 4 frames. Still auto action should not perform action at a steady 4 frames interval."""
