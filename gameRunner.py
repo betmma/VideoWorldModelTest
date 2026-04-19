@@ -27,7 +27,7 @@ def choose_random_variant(game_cls: Type[GameBase]) -> Type[GameBase]:
 	if not os.path.isdir(variants_dir):
 		return game_cls
 
-	variant_classes: list[Type[GameBase]] = []
+	variant_classes: list[Type[GameBase]] = [game_cls]
 	for filename in os.listdir(variants_dir):
 		if not filename.endswith(".py") or filename.startswith("__"):
 			continue

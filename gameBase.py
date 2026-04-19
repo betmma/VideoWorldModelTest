@@ -55,7 +55,7 @@ class GameBase(ABC):
         
     @abstractmethod
     def getPrompt(self) -> str:
-        """Return a string prompt describing the rules of the game for training. It should explain the rules and controls. It generally uses if statements to return different rules for different variants."""
+        """Return a string prompt describing the rules of the game for training. It should explain all rules and controls. Every variant should return its own prompt."""
         
     @abstractmethod
     def getAutoAction(self) -> ActionState:
