@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from gameBase import ActionState, GameBase
+from pygameBase import ActionState, GameBase
 
 class Constraint(ABC):
     @abstractmethod
@@ -647,6 +647,6 @@ class MinesweeperBase(GameBase):
         return action
 
 if __name__ == "__main__":
-    from gameRunner import run_autoplay, run_human_debug
+    from pygameRunner import run_autoplay, run_human_debug
     # run_human_debug(MinesweeperBase)
     run_autoplay(MinesweeperBase)

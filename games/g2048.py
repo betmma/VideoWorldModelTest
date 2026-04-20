@@ -14,7 +14,7 @@ import pygame
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from gameBase import ActionState, GameBase
+from pygameBase import ActionState, GameBase
 
 
 Direction = Literal["up", "down", "left", "right"]
@@ -642,6 +642,6 @@ class Game2048(GameBase):
 
 
 if __name__ == "__main__":
-    from gameRunner import run_autoplay, run_human_debug
+    from pygameRunner import run_autoplay, run_human_debug
 
     run_human_debug(Game2048)

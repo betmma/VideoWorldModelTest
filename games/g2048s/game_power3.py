@@ -30,6 +30,6 @@ class GamePower3(Game2048):
 
 
 if __name__ == "__main__":
-    from gameRunner import run_human_debug
+    from pygameRunner import run_human_debug
 
     run_human_debug(GamePower3)

@@ -34,5 +34,5 @@ class GameThrees(Game2048):
         return "This is Threes. Use W/A/S/D or Arrow keys to slide all tiles in one direction. 1 and 2 merge to 3. 3 and 3 merge to 6. Pairs of numbers >= 3 can merge if they are the same.The game ends when there are no valid moves left."
 
 if __name__ == "__main__":
-    from gameRunner import run_human_debug
+    from pygameRunner import run_human_debug
     run_human_debug(GameThrees)

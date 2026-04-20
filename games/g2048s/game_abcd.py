@@ -22,5 +22,5 @@ class GameABCD(Game2048):
         
 if __name__ == "__main__":
     print(GameABCD().getPrompt())
-    from gameRunner import run_human_debug
+    from pygameRunner import run_human_debug
     run_human_debug(GameABCD)

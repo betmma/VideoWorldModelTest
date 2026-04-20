@@ -8,7 +8,7 @@ import pygame
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from gameBase import ActionState, GameBase
+from pygameBase import ActionState, GameBase
 
 
 class Tile:
@@ -378,5 +378,5 @@ class MazeGame(GameBase):
 
 
 if __name__ == "__main__":
-    from gameRunner import run_human_debug, run_autoplay
+    from pygameRunner import run_human_debug, run_autoplay
     run_autoplay(MazeGame)

@@ -10,10 +10,12 @@ from typing import Type
 
 import cv2
 import numpy as np
-import pygame
 
-from gameBase import ActionState, GameBase
-from gameRunner import AutoPlayRunner, choose_random_variant
+# Import from engine-agnostic base only — no pygame dependency here.
+from engineBase import ActionState, GameBase, choose_random_variant
+# AutoPlayRunner is the Pygame concrete runner; swap this import for the
+# Ursina equivalent (UrsinaRunner) when generating data from Ursina games.
+from pygameRunner import AutoPlayRunner
 
 
 def _parse_game_class(spec: str) -> Type[GameBase]:
@@ -85,14 +87,13 @@ class _ClipRecorder:
                 return writer
         raise RuntimeError("unable to open video writer with codecs vp09 or avc1")
 
-    def _surface_to_bgr(self, surface: pygame.Surface) -> np.ndarray:
-        rgb = pygame.surfarray.array3d(surface)
-        rgb = np.transpose(rgb, (1, 0, 2))
-        bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-        return bgr
-
-    def on_frame(self, surface: pygame.Surface, action: ActionState, frame_index: int, ended_this_frame: bool) -> bool | None:
-        frame_bgr = self._surface_to_bgr(surface)
+    def on_frame(self, frame_rgb: np.ndarray, action: ActionState, frame_index: int, ended_this_frame: bool) -> bool | None:
+        """
+        Receives the current frame as an HxWx3 uint8 RGB numpy array.
+        grab_frame_rgb() on the runner is called internally before this
+        callback, so no engine surface types appear here.
+        """
+        frame_bgr = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
 
         if frame_bgr.shape[1] != self.width or frame_bgr.shape[0] != self.height:
             frame_bgr = cv2.resize(frame_bgr, (self.width, self.height), interpolation=cv2.INTER_AREA)

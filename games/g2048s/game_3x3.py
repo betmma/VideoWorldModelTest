@@ -17,5 +17,5 @@ class Game2048_3x3(Game2048):
         self.reset()
         
 if __name__ == "__main__":
-    from gameRunner import run_human_debug
+    from pygameRunner import run_human_debug
     run_human_debug(Game2048_3x3)

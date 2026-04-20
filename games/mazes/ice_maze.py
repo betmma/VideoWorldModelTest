@@ -187,5 +187,5 @@ class IceMazeGame(MazeGame):
 if __name__ == "__main__":
     # Allow testing directly
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
-    from gameRunner import run_human_debug, run_autoplay
+    from pygameRunner import run_human_debug, run_autoplay
     run_autoplay(IceMazeGame)

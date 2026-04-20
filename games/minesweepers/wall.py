@@ -89,5 +89,5 @@ class WallMinesweeper(MinesweeperBase):
 
 if __name__ == "__main__":
     # Allow testing directly
-    from gameRunner import run_human_debug, run_autoplay
+    from pygameRunner import run_human_debug, run_autoplay
     run_human_debug(WallMinesweeper)

@@ -55,5 +55,5 @@ class Game2048_MulDiv(Game2048):
         return "This is 2048 with multiply (×) and divide (÷) tiles. Use W/A/S/D or Arrow keys to slide all tiles in one direction. Tiles with the same value merge to double. A × tile merges with any numbered tile and doubles it. A ÷ tile merges with any numbered tile and halves it. The game ends when there are no valid moves left."
 
 if __name__ == "__main__":
-    from gameRunner import run_human_debug
+    from pygameRunner import run_human_debug
     run_human_debug(Game2048_MulDiv)

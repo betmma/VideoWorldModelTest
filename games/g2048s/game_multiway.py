@@ -42,6 +42,6 @@ class GameMultiway(Game2048):
 
 
 if __name__ == "__main__":
-    from gameRunner import run_human_debug,run_autoplay
+    from pygameRunner import run_human_debug,run_autoplay
 
     run_human_debug(GameMultiway)
