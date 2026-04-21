@@ -541,7 +541,7 @@ class MinesweeperBase(GameBase):
         return f"This is {self.name}. "+\
             "Use Arrow keys to move the cursor. "+\
             "Press W to reveal a tile. Press S to flag a mine. "+\
-            ("Press A to fast open adjacent tiles if the number of flags matches the clue." if self.can_fast_open() else "")+\
+            ("Press A to fast open adjacent tiles if the number of flags matches the clue." if self.can_fast_open(1,1) else "")+\
             "When game ends, press A or left arrow key to restart."
         
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import colorsys
 import math
 import os
 import random
@@ -35,12 +36,14 @@ MAX_TILT = 25.0
 TILT_SPEED = 16.0
 TILT_RETURN = 0.0
 FPS = 30
+FALL_SPEED = 6.0
+FALL_RESPAWN_Y = -3.0
 
 
 class MarbleMazeUrsina(UrsinaGameBase):
     name = "Marble Maze 3D"
     variantsPath = "marble_mazes"
-    background_color = color.rgb32(18, 20, 28)
+    background_color = color.rgba32(18, 20, 28)
 
     def __init__(self, headless: bool = False) -> None:
         super().__init__(headless=headless)
@@ -53,7 +56,7 @@ class MarbleMazeUrsina(UrsinaGameBase):
 
         self._sun = DirectionalLight(shadow_map_resolution=(2048, 2048))
         self._sun.look_at(Vec3(1, -2, 1))
-        self._ambient = AmbientLight(color=color.rgba(150, 150, 165, 255))
+        self._ambient = AmbientLight(color=color.rgba32(150, 150, 165, 255))
 
         self._entities: list[Entity] = []
         self._board: Entity | None = None
@@ -72,8 +75,10 @@ class MarbleMazeUrsina(UrsinaGameBase):
         self.tilt_z = 0.0
         self.ball_r = 0.0
         self.ball_c = 0.0
+        self.ball_y = BALL_R
         self.vr = 0.0
         self.vc = 0.0
+        self.falling = False
 
         self.win = False
         self.win_frames = 0
@@ -88,6 +93,9 @@ class MarbleMazeUrsina(UrsinaGameBase):
         self.start_c = 1.0
         self.goal_cell = (0, 0)
         self._auto_path: list[tuple[int, int]] = []
+
+        self.wall_color = self._pick_vivid_color()
+        self.marble_color = self._pick_vivid_color()
 
         self._create_level()
         self._rebuild_auto_path()
@@ -105,16 +113,26 @@ class MarbleMazeUrsina(UrsinaGameBase):
     def _respawn_ball(self) -> None:
         self.ball_r = self.start_r
         self.ball_c = self.start_c
+        self.ball_y = BALL_R
         self.vr = 0.0
         self.vc = 0.0
         self.tilt_x = 0.0
         self.tilt_z = 0.0
+        self.falling = False
         if self._board:
             self._board.rotation_x = 0.0
             self._board.rotation_z = 0.0
 
     def _is_hole_cell(self, r: int, c: int) -> bool:
         return 0 <= r < self.grid_h and 0 <= c < self.grid_w and self.grid[r][c] == "H"
+
+    @staticmethod
+    def _pick_vivid_color():
+        h = random.random()
+        l = random.uniform(0.5, 0.7)
+        s = random.uniform(0.25, 0.5)
+        r, g, b = colorsys.hls_to_rgb(h, l, s)
+        return color.rgba32(int(r * 255), int(g * 255), int(b * 255))
 
     def update(self, action: ActionState) -> bool:
         self.frame_index += 1
@@ -162,21 +180,34 @@ class MarbleMazeUrsina(UrsinaGameBase):
             self.ball_c += self.vc * dt / 4
             self._resolve_collision_axis("c")
 
-        if self._marble:
-            self._marble.position = Vec3(
-                (self.ball_c - self.grid_w / 2) * CELL,
-                BALL_R,
-                (self.ball_r - self.grid_h / 2) * CELL,
-            )
-
-        if self._is_hole_cell(int(self.ball_r), int(self.ball_c)):
-            self._respawn_ball()
+        if self.falling:
+            self.ball_y -= FALL_SPEED * dt
             if self._marble:
                 self._marble.position = Vec3(
                     (self.ball_c - self.grid_w / 2) * CELL,
-                    BALL_R,
+                    self.ball_y,
                     (self.ball_r - self.grid_h / 2) * CELL,
                 )
+            if self.ball_y <= FALL_RESPAWN_Y:
+                self._respawn_ball()
+                if self._marble:
+                    self._marble.position = Vec3(
+                        (self.ball_c - self.grid_w / 2) * CELL,
+                        self.ball_y,
+                        (self.ball_r - self.grid_h / 2) * CELL,
+                    )
+            return False
+        
+        if self._marble:
+            self._marble.position = Vec3(
+                (self.ball_c - self.grid_w / 2) * CELL,
+                self.ball_y,
+                (self.ball_r - self.grid_h / 2) * CELL,
+            )
+
+        if self._is_hole_cell(int(self.ball_r), int(self.ball_c)) and ((self.ball_r%1-0.5)**2+(self.ball_c%1-0.5)**2)**0.5 < 0.5:
+            self.falling = True
+            return False
 
         r, c = int(self.ball_r), int(self.ball_c)
         if 0 <= r < self.grid_h and 0 <= c < self.grid_w and self.grid[r][c] == "G" and not self.win:
@@ -207,32 +238,67 @@ class MarbleMazeUrsina(UrsinaGameBase):
                 action["A"] = True
             return action
 
+        # Occasional reaction-delay frame: imitates human latency and breaks
+        # the deterministic respawn->same-trajectory->same-hole loops that
+        # otherwise trap the marble on trickier mazes.
+        if random.random() < 0.05:
+            return action
+
         waypoint = self._get_auto_waypoint()
         if waypoint is None:
             return action
 
         target_r, target_c = waypoint
-        dr = target_r - self.ball_r
-        dc = target_c - self.ball_c
+        cautious = self._hole_near()
+        max_speed = 0.3 if cautious else 0.9
+        threshold = 0.15 if cautious else 0.18
 
-        row_threshold = 0.18
-        col_threshold = 0.18
-        max_row_speed = 0.9
-        max_col_speed = 0.9
-
-        if abs(dr) > row_threshold:
-            if dr > 0 and self.vr < max_row_speed:
-                action["W"] = True
-            elif dr < 0 and self.vr > -max_row_speed:
-                action["S"] = True
-
-        if abs(dc) > col_threshold:
-            if dc > 0 and self.vc < max_col_speed:
-                action["D"] = True
-            elif dc < 0 and self.vc > -max_col_speed:
-                action["A"] = True
-
+        self._steer_axis(target_r - self.ball_r, self.vr, max_speed, threshold, "W", "S", action, cautious)
+        self._steer_axis(target_c - self.ball_c, self.vc, max_speed, threshold, "D", "A", action, cautious)
         return action
+
+    @staticmethod
+    def _steer_axis(delta: float, v: float, max_speed: float, threshold: float,
+                    pos_key: str, neg_key: str, action: dict, aggressive_brake: bool) -> None:
+        # Aggressive mode actively tilts against velocity once it breaks the cap.
+        # TILT_RETURN is 0, so a passive "stop pressing" does not decelerate —
+        # only tilting the other way does.
+        if aggressive_brake:
+            if v > max_speed:
+                action[neg_key] = True
+                return
+            if v < -max_speed:
+                action[pos_key] = True
+                return
+        if abs(delta) > threshold:
+            if delta > 0 and v < max_speed:
+                action[pos_key] = True
+            elif delta < 0 and v > -max_speed:
+                action[neg_key] = True
+
+    def _hole_near(self) -> bool:
+        cr = int(self.ball_r)
+        cc = int(self.ball_c)
+        # Plus pattern (cardinal neighbours only): diagonals can't cause a
+        # drift-fall since the marble can only slide along r or c axes.
+        for dr, dc in ((0, 0), (1, 0), (-1, 0), (0, 1), (0, -1)):
+            if self._is_hole_cell(cr + dr, cc + dc):
+                return True
+        # Braking takes many frames to bite, so the faster the marble is going
+        # the further we scan along the velocity direction for holes.
+        speed_sq = self.vr * self.vr + self.vc * self.vc
+        if speed_sq < 0.04:
+            return False
+        speed = math.sqrt(speed_sq)
+        dir_r = self.vr / speed
+        dir_c = self.vc / speed
+        max_look = min(5.0, 2.0 + speed * 1.5)
+        d = 1.5
+        while d <= max_look:
+            if self._is_hole_cell(int(self.ball_r + dir_r * d), int(self.ball_c + dir_c * d)):
+                return True
+            d += 0.5
+        return False
 
     def _rebuild_auto_path(self) -> None:
         start = (int(self.start_r), int(self.start_c))
@@ -340,53 +406,45 @@ class MarbleMazeUrsina(UrsinaGameBase):
         self._board = pivot
         self._entities.append(pivot)
 
-        backing = Entity(
-            parent=pivot,
-            model="cube",
-            color=color.rgb(10, 12, 18),
-            scale=Vec3(self.grid_w * CELL, BOARD_THICK * 0.2, self.grid_h * CELL),
-            position=Vec3(0, -0.38, 0),
-            shader=lit_with_shadows_shader,
-        )
-        self._entities.append(backing)
-
         for r in range(self.grid_h):
             for c in range(self.grid_w):
                 ch = self.grid[r][c]
                 wx = (c - self.grid_w / 2 + 0.5) * CELL
                 wz = (r - self.grid_h / 2 + 0.5) * CELL
 
-                if ch != "H":
-                    floor_tile = Entity(
-                        parent=pivot,
-                        model="cube",
-                        color=color.rgb(55, 55, 70),
-                        scale=Vec3(CELL, BOARD_THICK, CELL),
-                        position=Vec3(wx, -BOARD_THICK / 2, wz),
-                        shader=lit_with_shadows_shader,
-                    )
-                    self._entities.append(floor_tile)
+                if ch == "H":
+                    continue
+
+                backing_tile = Entity(
+                    parent=pivot,
+                    model="cube",
+                    color=color.rgba32(10, 12, 18),
+                    scale=Vec3(CELL, BOARD_THICK * 0.2, CELL),
+                    position=Vec3(wx, -0.38, wz),
+                    shader=lit_with_shadows_shader,
+                )
+                self._entities.append(backing_tile)
+
+                floor_tile = Entity(
+                    parent=pivot,
+                    model="cube",
+                    color=color.rgba32(55, 55, 70),
+                    scale=Vec3(CELL, BOARD_THICK, CELL),
+                    position=Vec3(wx, -BOARD_THICK / 2, wz),
+                    shader=lit_with_shadows_shader,
+                )
+                self._entities.append(floor_tile)
 
                 if ch == "#":
                     wall = Entity(
                         parent=pivot,
                         model="cube",
-                        color=color.azure,
+                        color=self.wall_color,
                         scale=Vec3(CELL, WALL_H, CELL),
                         position=Vec3(wx, WALL_H / 2, wz),
                         shader=lit_with_shadows_shader,
                     )
                     self._entities.append(wall)
-                elif ch == "H":
-                    hole_back = Entity(
-                        parent=pivot,
-                        model="cube",
-                        color=color.black,
-                        scale=Vec3(CELL * 0.66, BOARD_THICK * 0.06, CELL * 0.66),
-                        position=Vec3(wx, -0.34, wz),
-                        shader=lit_with_shadows_shader,
-                    )
-                    self._entities.append(hole_back)
                 elif ch == "G":
                     goal = Entity(
                         parent=pivot,
@@ -398,12 +456,12 @@ class MarbleMazeUrsina(UrsinaGameBase):
                     )
                     self._entities.append(goal)
 
-        sx = (self.start_c - self.grid_w / 2 + 0.5) * CELL
-        sz = (self.start_r - self.grid_h / 2 + 0.5) * CELL
+        sx = (self.start_c - self.grid_w / 2) * CELL
+        sz = (self.start_r - self.grid_h / 2) * CELL
         marble = Entity(
             parent=pivot,
             model="sphere",
-            color=color.orange,
+            color=self.marble_color,
             scale=BALL_R * 2.6,
             position=Vec3(sx, BALL_R, sz),
             shader=lit_with_shadows_shader,
