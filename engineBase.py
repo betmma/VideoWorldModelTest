@@ -111,6 +111,7 @@ class GameBase(ABC):
         Implement a logical, somewhat randomised auto-play agent.
         Called every frame. Must have internal state and should not act at a
         perfectly steady interval to imitate human reaction times.
+        If the game's action happens at key pressed down instead of holding key, auto action should only execute actions at multiples of moveInterval frames. Still auto action should not perform action at a steady moveInterval.
         """
 
 

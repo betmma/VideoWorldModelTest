@@ -17,10 +17,6 @@ class GameBase(_EngineGameBase):
     Pygame-backed concrete game base.
     Inherits the engine-agnostic contract from engineBase.GameBase and adds
     pygame initialisation: self.screen (pygame.Surface) and self.clock.
-
-    All existing game files (games/maze.py, games/minesweeper.py, etc.) that
-    do `from pygameBase import ActionState, GameBase` continue to work via the
-    gameBase.py compatibility shim.
     """
 
     def __init__(self, headless: bool = False) -> None:

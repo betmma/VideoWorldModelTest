@@ -1,44 +1,52 @@
 from __future__ import annotations
 
-# ---------------------------------------------------------------------------
-# ursinaBase.py — Ursina concrete game base (STUB)
-# ---------------------------------------------------------------------------
-# Fill this in when building the Ursina marble maze.
-# Import ursina here; do NOT import pygame.
-#
-# from ursina import Ursina, Entity, camera, ...
-# ---------------------------------------------------------------------------
+from ursina import Entity, Ursina, window
 
 from engineBase import ActionState, GameBase as _EngineGameBase
 
 
 class UrsinaGameBase(_EngineGameBase):
     """
-    Ursina-backed concrete game base (not yet implemented).
+    Ursina-backed concrete game base.
 
-    When implementing:
-    - __init__ should create the Ursina app and an offscreen buffer for
-      headless rendering (Panda3D's GraphicsOutput / OffscreenBuffer).
-    - self.screen equivalent will be a Panda3D texture / framebuffer handle.
-    - draw() is called each frame before the engine renders; in Ursina this
-      maps to update() or a custom Task callback.
+    __init__ creates the Ursina app (window or offscreen).
+    draw() is a no-op — Ursina renders automatically when the runner
+    calls base.taskMgr.step() each frame.
+    self.screen is not used; entities are created directly in Ursina's
+    scene graph inside reset().
     """
 
     def __init__(self, headless: bool = False) -> None:
         super().__init__(headless=headless)
-        raise NotImplementedError("UrsinaGameBase is a stub — implement before use.")
+        original_make_editor_gui = window.make_editor_gui
+        window.make_editor_gui = lambda *args, **kwargs: None
+        try:
+            if headless:
+                self.app = Ursina(
+                    window_type="offscreen",
+                    development_mode=False,
+                    editor_ui_enabled=False,
+                    fullscreen=False,
+                    borderless=False,
+                    size=(self.width, self.height),
+                )
+            else:
+                self.app = Ursina(
+                    development_mode=False,
+                    editor_ui_enabled=False,
+                    fullscreen=False,
+                    borderless=False,
+                    size=(self.width, self.height),
+                )
+                window.title = self.name
+                window.size = (self.width, self.height)
+                window.borderless = False
+        finally:
+            window.make_editor_gui = original_make_editor_gui
 
-    def reset(self) -> None:
-        raise NotImplementedError
-
-    def update(self, action: ActionState) -> bool:
-        raise NotImplementedError
+        if getattr(window, "editor_ui", None) is None:
+            window.editor_ui = Entity(name="editor_ui_stub", enabled=False, eternal=True)
 
     def draw(self) -> None:
-        raise NotImplementedError
-
-    def getPrompt(self) -> str:
-        raise NotImplementedError
-
-    def getAutoAction(self) -> ActionState:
-        raise NotImplementedError
+        """No-op — rendering is driven by base.taskMgr.step() in the runner."""
+        pass

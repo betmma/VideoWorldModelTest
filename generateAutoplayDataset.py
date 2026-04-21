@@ -11,11 +11,26 @@ from typing import Type
 import cv2
 import numpy as np
 
-# Import from engine-agnostic base only — no pygame dependency here.
-from engineBase import ActionState, GameBase, choose_random_variant
-# AutoPlayRunner is the Pygame concrete runner; swap this import for the
-# Ursina equivalent (UrsinaRunner) when generating data from Ursina games.
-from pygameRunner import AutoPlayRunner
+from engineBase import ActionState, BaseRunner, GameBase, choose_random_variant
+
+
+def _get_autoplay_runner(game_cls: Type[GameBase]) -> Type[BaseRunner]:
+    """Pick the concrete autoplay runner by detecting the engine base in the MRO.
+
+    Lazy-imported so pygame-only runs don't pay the ursina/Panda3D import cost
+    (and vice versa).
+    """
+    modules = {cls.__module__ for cls in game_cls.__mro__}
+    if "ursinaBase" in modules:
+        from ursinaRunner import UrsinaAutoPlayRunner
+        return UrsinaAutoPlayRunner
+    if "pygameBase" in modules:
+        from pygameRunner import AutoPlayRunner
+        return AutoPlayRunner
+    raise TypeError(
+        f"Cannot determine engine for {game_cls.__name__}: it does not inherit "
+        "from pygameBase.GameBase or ursinaBase.UrsinaGameBase"
+    )
 
 
 def _parse_game_class(spec: str) -> Type[GameBase]:
@@ -75,7 +90,7 @@ class _ClipRecorder:
         self.writer = self._create_writer(video_abs)
 
     def _create_writer(self, video_abs: str) -> cv2.VideoWriter:
-        preferred_codecs = ["vp09", "avc1"]
+        preferred_codecs = ["avc1", "mp4v"]
         for codec in preferred_codecs:
             writer = cv2.VideoWriter(
                 video_abs,
@@ -85,7 +100,7 @@ class _ClipRecorder:
             )
             if writer.isOpened():
                 return writer
-        raise RuntimeError("unable to open video writer with codecs vp09 or avc1")
+        raise RuntimeError("unable to open video writer with codecs avc1 or mp4v")
 
     def on_frame(self, frame_rgb: np.ndarray, action: ActionState, frame_index: int, ended_this_frame: bool) -> bool | None:
         """
@@ -153,12 +168,14 @@ def _record_one_clip(
         image_abs=image_abs,
     )
 
-    runner = AutoPlayRunner(game=game, max_frames=max_frames, on_frame=recorder.on_frame)
-    runner.run()
-    recorder.close()
-
-    selected_cls.width = old_width
-    selected_cls.height = old_height
+    try:
+        runner_cls = _get_autoplay_runner(selected_cls)
+        runner = runner_cls(game=game, max_frames=max_frames, on_frame=recorder.on_frame)
+        runner.run()
+    finally:
+        recorder.close()
+        selected_cls.width = old_width
+        selected_cls.height = old_height
 
     if not recorder.actions:
         raise RuntimeError("recorded clip has no frames")
