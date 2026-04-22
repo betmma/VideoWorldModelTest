@@ -39,6 +39,14 @@ FPS = 30
 FALL_SPEED = 6.0
 FALL_RESPAWN_Y = -3.0
 
+SPEED_BAR_X = -0.7
+SPEED_BAR_Y = 0.43
+SPEED_BAR_W = 0.3
+SPEED_BAR_H = 0.03
+SPEED_BAR_MAX = 9.0
+
+TRAIL_COUNT = 6
+
 
 class MarbleMazeUrsina(UrsinaGameBase):
     name = "Marble Maze 3D"
@@ -61,6 +69,22 @@ class MarbleMazeUrsina(UrsinaGameBase):
         self._entities: list[Entity] = []
         self._board: Entity | None = None
         self._marble: Entity | None = None
+        self._trail_entities: list[Entity] = []
+
+        self._speed_bar_bg = Entity(
+            parent=camera.ui,
+            model="quad",
+            color=color.rgba32(20, 20, 28, 220),
+            position=Vec3(SPEED_BAR_X, SPEED_BAR_Y, 0),
+            scale=Vec3(SPEED_BAR_W, SPEED_BAR_H, 1),
+        )
+        self._speed_bar_fill = Entity(
+            parent=camera.ui,
+            model="quad",
+            color=color.rgba32(220, 180, 60, 255),
+            position=Vec3(SPEED_BAR_X - SPEED_BAR_W / 2, SPEED_BAR_Y, -0.01),
+            scale=Vec3(1e-4, SPEED_BAR_H * 0.75, 1),
+        )
 
         self.reset()
 
@@ -70,6 +94,7 @@ class MarbleMazeUrsina(UrsinaGameBase):
         self._entities.clear()
         self._board = None
         self._marble = None
+        self._trail_entities = []
 
         self.tilt_x = 0.0
         self.tilt_z = 0.0
@@ -122,6 +147,14 @@ class MarbleMazeUrsina(UrsinaGameBase):
         if self._board:
             self._board.rotation_x = 0.0
             self._board.rotation_z = 0.0
+        if self._trail_entities:
+            new_pos = Vec3(
+                (self.ball_c - self.grid_w / 2) * CELL,
+                self.ball_y,
+                (self.ball_r - self.grid_h / 2) * CELL,
+            )
+            for trail in self._trail_entities:
+                trail.position = new_pos
 
     def _is_hole_cell(self, r: int, c: int) -> bool:
         return 0 <= r < self.grid_h and 0 <= c < self.grid_w and self.grid[r][c] == "H"
@@ -220,15 +253,31 @@ class MarbleMazeUrsina(UrsinaGameBase):
         return False
 
     def draw(self) -> None:
-        pass
+        if self._marble is not None and self._trail_entities:
+            for i in range(len(self._trail_entities) - 1, 0, -1):
+                self._trail_entities[i].position = self._trail_entities[i - 1].position
+            self._trail_entities[0].position = self._marble.position
+
+        if self._speed_bar_fill is None:
+            return
+        speed = math.sqrt(self.vr * self.vr + self.vc * self.vc)
+        frac = min(1.0, speed / SPEED_BAR_MAX)
+        bar_w = max(1e-4, frac * SPEED_BAR_W)
+        self._speed_bar_fill.position = Vec3(
+            SPEED_BAR_X - SPEED_BAR_W / 2 + bar_w / 2,
+            SPEED_BAR_Y,
+            -0.01,
+        )
+        self._speed_bar_fill.scale_x = bar_w
 
     def getPrompt(self) -> str:
         hole_text = ""
         if any("H" in row for row in self.grid):
-            hole_text = " Avoid real holes in the board, which reset the marble to the starting position."
+            hole_text = " Avoid holes in the board, which reset the marble to the starting position."
         return (
             f"This is {self.name}. Use W/A/S/D or Arrow keys to tilt the board. "
             f"The marble rolls under gravity toward the low side of the board. Navigate the marble through the maze to reach the green goal tile.{hole_text} Press A to restart after winning."
+            "There is a speed bar at the top left that indicates how fast the marble is rolling."
         )
 
     def getAutoAction(self) -> ActionState:
@@ -468,6 +517,21 @@ class MarbleMazeUrsina(UrsinaGameBase):
         )
         self._marble = marble
         self._entities.append(marble)
+
+        start_pos = Vec3(sx, BALL_R, sz)
+        self._trail_entities = []
+        for i in range(TRAIL_COUNT):
+            age_frac = 1.0 - i / TRAIL_COUNT
+            trail = Entity(
+                parent=pivot,
+                model="sphere",
+                color=self.marble_color,
+                alpha=0.55 * age_frac,
+                scale=BALL_R * 2.6 * (0.3 + 0.6 * age_frac),
+                position=start_pos,
+            )
+            self._trail_entities.append(trail)
+            self._entities.append(trail)
 
     def _generate_maze(self, w: int, h: int) -> list[list[str]]:
         w = w if w % 2 == 1 else w + 1
