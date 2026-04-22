@@ -45,7 +45,13 @@ SPEED_BAR_W = 0.3
 SPEED_BAR_H = 0.03
 SPEED_BAR_MAX = 9.0
 
-TRAIL_COUNT = 6
+TRAIL_COUNT = 12
+
+LIVES_MAX = 3
+LIVES_X = 0.55
+LIVES_Y = 0.43
+LIVES_SIZE = 0.045
+LIVES_SPACING = 0.08
 
 
 class MarbleMazeUrsina(UrsinaGameBase):
@@ -85,6 +91,19 @@ class MarbleMazeUrsina(UrsinaGameBase):
             position=Vec3(SPEED_BAR_X - SPEED_BAR_W / 2, SPEED_BAR_Y, -0.01),
             scale=Vec3(1e-4, SPEED_BAR_H * 0.75, 1),
         )
+
+        self._life_icons: list[Entity] = []
+        for i in range(LIVES_MAX):
+            icon = Entity(
+                parent=camera.ui,
+                model="circle",
+                color=color.rgba32(230, 90, 90, 255),
+                position=Vec3(LIVES_X + i * LIVES_SPACING, LIVES_Y, 0),
+                scale=LIVES_SIZE,
+            )
+            self._life_icons.append(icon)
+
+        self.lives = LIVES_MAX
 
         self.reset()
 
@@ -129,6 +148,9 @@ class MarbleMazeUrsina(UrsinaGameBase):
         self.ball_r = self.start_r
         self.ball_c = self.start_c
 
+        self.lives = LIVES_MAX
+        self._refresh_life_icons()
+
     def _create_level(self) -> None:
         w, h = 15, 11
         self.grid_w, self.grid_h = w, h
@@ -136,6 +158,13 @@ class MarbleMazeUrsina(UrsinaGameBase):
         self.start_r, self.start_c = 1.5, 1.5
 
     def _respawn_ball(self) -> None:
+        # Each respawn consumes one life. When none remain, swap to a new map
+        # instead of respawning on the same one.
+        self.lives -= 1
+        if self.lives <= 0:
+            self.reset()
+            return
+        self._refresh_life_icons()
         self.ball_r = self.start_r
         self.ball_c = self.start_c
         self.ball_y = BALL_R
@@ -155,6 +184,11 @@ class MarbleMazeUrsina(UrsinaGameBase):
             )
             for trail in self._trail_entities:
                 trail.position = new_pos
+
+    def _refresh_life_icons(self) -> None:
+        has_holes = any("H" in row for row in self.grid)
+        for i, icon in enumerate(self._life_icons):
+            icon.visible = has_holes and (i < self.lives)
 
     def _is_hole_cell(self, r: int, c: int) -> bool:
         return 0 <= r < self.grid_h and 0 <= c < self.grid_w and self.grid[r][c] == "H"
@@ -273,7 +307,10 @@ class MarbleMazeUrsina(UrsinaGameBase):
     def getPrompt(self) -> str:
         hole_text = ""
         if any("H" in row for row in self.grid):
-            hole_text = " Avoid holes in the board, which reset the marble to the starting position."
+            hole_text = (
+                f" Avoid holes in the board. You have {LIVES_MAX} chances per map: "
+                "each fall uses one chance and respawns the marble at the start, and after all chances are spent a new map is generated. The red dots at the top of the screen show the remaining chances."
+            )
         return (
             f"This is {self.name}. Use W/A/S/D or Arrow keys to tilt the board. "
             f"The marble rolls under gravity toward the low side of the board. Navigate the marble through the maze to reach the green goal tile.{hole_text} Press A to restart after winning."
@@ -526,7 +563,7 @@ class MarbleMazeUrsina(UrsinaGameBase):
                 parent=pivot,
                 model="sphere",
                 color=self.marble_color,
-                alpha=0.55 * age_frac,
+                alpha=1 * age_frac,
                 scale=BALL_R * 2.6 * (0.3 + 0.6 * age_frac),
                 position=start_pos,
             )
