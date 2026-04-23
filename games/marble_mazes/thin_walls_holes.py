@@ -123,7 +123,7 @@ class ThinWallMarbleMazeWithHoles(ThinWallMarbleMaze):
                 self._walls.discard(frozenset({(hr, hc), (nr, nc)}))
 
     def getPrompt(self) -> str:
-        from games.marble_maze_ursina import LIVES_MAX
+        from games.marbleMaze import LIVES_MAX
 
         return (
             f"This is {self.name}. Use W/A/S/D or Arrow keys to tilt the board. "
@@ -132,9 +132,7 @@ class ThinWallMarbleMazeWithHoles(ThinWallMarbleMaze):
             "Avoid the open holes in the board; rolling into one drops the marble "
             "into the void. "
             f"You have {LIVES_MAX} chances per map: each fall uses one chance and "
-            "respawns the marble at the start, and after all chances are spent a "
-            "new map is generated. The red dots at the top of the screen show the "
-            "remaining chances. Press A to restart after winning."
+            "respawns the marble at the start, and after all chances are spent a new map is generated. The red dots at the top of the screen show the remaining chances. Press A to restart after winning."
         )
 
 

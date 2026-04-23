@@ -56,7 +56,7 @@ LIVES_SPACING = 0.08
 
 class MarbleMazeUrsina(UrsinaGameBase):
     name = "Marble Maze 3D"
-    variantsPath = "marble_mazes"
+    variantsPath = "marbleMazes"
     background_color = color.rgba32(18, 20, 28)
 
     def __init__(self, headless: bool = False) -> None:

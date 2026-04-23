@@ -38,8 +38,16 @@ FrameCallback = Callable[["np.ndarray", ActionState, int, bool], Optional[bool]]
 # ---------------------------------------------------------------------------
 
 '''
-When writing a specific game, add the following at the end of the file to
-allow testing directly:
+When writing a game base class, add this line at top of the game file to allow importing base classes:
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+if writing a game variant (inside a subfolder), add this line instead to allow importing the base class:
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+
+For every game, add the following at the end of the file to
+allow testing directly: (replace pygameRunner with the appropriate runner if not using pygame, and replace GameClassName with the actual game class name)
 
 if __name__ == "__main__":
     from pygameRunner import run_human_debug, run_autoplay
@@ -49,8 +57,6 @@ if __name__ == "__main__":
 class GameBase(ABC):
     """
     Engine-agnostic base contract for game simulation and rendering.
-    Subclasses must NOT import pygame or ursina directly; that belongs in
-    the concrete engine layer (pygameBase / ursinaBase).
 
     The game cannot use actions other than the 8 defined in ActionState,
     but it can interpret them in any way.
@@ -65,6 +71,7 @@ class GameBase(ABC):
     width = 854
     height = 480
 
+    # See getAutoAction() docs
     moveInterval = 4
 
     BLANK_ACTION: ActionState = {
@@ -111,7 +118,7 @@ class GameBase(ABC):
         Implement a logical, somewhat randomised auto-play agent.
         Called every frame. Must have internal state and should not act at a
         perfectly steady interval to imitate human reaction times.
-        If the game's action happens at key pressed down instead of holding key, auto action should only execute actions at multiples of moveInterval frames. Still auto action should not perform action at a steady moveInterval.
+        If the game's action happens at key pressed down instead of holding key, auto action should only execute actions at multiples of moveInterval frames. A pattern is to have a frame attribute in the game class, and if frame%moveInterval != 0, return empty action. Still auto action should not perform action at a steady moveInterval.
         """
 
 

@@ -6,7 +6,7 @@ import sys
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-from games.marble_maze_ursina import MarbleMazeUrsina
+from games.marbleMaze import MarbleMazeUrsina
 
 
 class MarbleMazeWithHoles(MarbleMazeUrsina):

@@ -10,7 +10,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".
 from ursina import Entity, Vec3, color
 from ursina.shaders import lit_with_shadows_shader
 
-from games.marble_maze_ursina import (
+from games.marbleMaze import (
     BALL_R,
     BOARD_THICK,
     CELL,
