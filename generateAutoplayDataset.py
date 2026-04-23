@@ -1,4 +1,13 @@
 from __future__ import annotations
+from panda3d.core import loadPrcFileData
+
+loadPrcFileData("", """
+load-display pandagl
+aux-display p3tinydisplay
+window-type onscreen
+win-size 854 480
+sync-video false
+""")
 
 import argparse
 from datetime import datetime
