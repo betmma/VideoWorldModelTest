@@ -38,6 +38,57 @@ class RubiksCube(UrsinaGameBase):
         self.rotation_helper = Entity()
         
         self.prev_action: ActionState = self.BLANK_ACTION.copy()
+        
+        self.preview_buffer = None
+        self.preview_cam = None
+        self.preview_panel_bg: Entity | None = None
+        self.preview_panel: Entity | None = None
+        self.preview_label: Text | None = None
+
+        self.setup_secondary_camera()
+
+    def setup_secondary_camera(self) -> None:
+        if self.preview_cam is not None:
+            return
+
+        # Panda3D offscreen buffer + camera
+        self.preview_buffer = application.base.win.makeTextureBuffer("hidden_faces", 256, 256)
+        self.preview_buffer.setSort(-100)   # render before main window
+        raw_tex = self.preview_buffer.getTexture()
+        preview_tex = Texture(raw_tex)
+
+        self.preview_cam = application.base.makeCamera(self.preview_buffer)
+        self.preview_cam.reparent_to(scene) 
+        self.preview_cam.node().getLens().setFov(camera.fov)
+
+        # Live texture panel
+        self.preview_panel = Entity(
+            parent=camera.ui,
+            model='quad',
+            texture=preview_tex,
+            x=.68, y=.25,
+            scale=(.30, .30),
+            unlit=True,
+            z=-0.2,
+        )
+
+        self.preview_label = Text(
+            parent=camera.ui,
+            text='Hidden faces',
+            position=(.49, .40),
+            scale=.9,
+        )
+
+        self.update_secondary_camera()
+
+    def update_secondary_camera(self) -> None:
+        if self.preview_cam is None:
+            return
+
+        # Mirror the main camera through the origin so the inset shows the opposite 3 faces.
+        p = camera.position
+        self.preview_cam.setPos(-p.x, -p.y, -p.z)
+        self.preview_cam.lookAt(0, 0, 0)
 
     def reset(self) -> None:
         self.frames=0
@@ -106,6 +157,7 @@ class RubiksCube(UrsinaGameBase):
         self.moves_made = 0
         
         self.prev_action = self.BLANK_ACTION.copy()
+        self.update_secondary_camera()
 
     def getPrompt(self) -> str:
         return "Rubik's Cube simulation. Use W/A/S/D to move the cursor across the visible faces. Moving the cursor over the edge will rotate the entire cube to reveal hidden faces. Use the Up/Left/Down/Right arrows to rotate the currently selected slice/layer."
