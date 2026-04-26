@@ -87,7 +87,7 @@ class GameBase(ABC):
     @abstractmethod
     def reset(self) -> None:
         """
-        Reset internal game state. Must NOT change the game variant.
+        Reset internal game state. Must NOT change the game variant and NOT change getPrompt() value.
         Also reset auto-play's internal state.
         The game should only call reset() from within its own update(), NOT
         from outer code.
