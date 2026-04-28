@@ -141,7 +141,7 @@ class RubiksCube(UrsinaGameBase):
         # Reset Cursor and State
         self.cur_pos = Vec3(0, 0, -1)
         self.cur_normal = Vec3(0, 0, -1)
-        self.cursor = Entity(model='cube', color=color.rgba32(255, 255, 0, 200), scale=(0.9, 0.9, 0.05))
+        self.cursor = Entity(model='sphere', color=color.rgba32(255, 255, 0, 200), scale=(0.9, 0.9, 0.05))
         self.update_cursor_visuals()
 
         # Animation states (frame-based for determinism)
