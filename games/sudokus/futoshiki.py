@@ -23,7 +23,7 @@ class FutoshikiSudoku(SudokuBase):
         pairs = orthogonal_pairs(self.side)
         random.shuffle(pairs)
         greater_pairs = []
-        count = random.randint(40, 48)
+        count = random.randint(50, 68)
         for left_cell, right_cell in pairs[:count]:
             left_value = solution[left_cell[0]][left_cell[1]]
             right_value = solution[right_cell[0]][right_cell[1]]
