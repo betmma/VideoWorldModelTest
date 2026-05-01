@@ -12,6 +12,7 @@ sync-video false
 import argparse
 from datetime import datetime
 import importlib
+import inspect
 import json
 import os
 import re
@@ -43,14 +44,39 @@ def _get_autoplay_runner(game_cls: Type[GameBase]) -> Type[BaseRunner]:
 
 
 def _parse_game_class(spec: str) -> Type[GameBase]:
-    if ":" not in spec:
-        raise ValueError("game class must be in format module.path:ClassName")
-    module_name, class_name = spec.split(":", 1)
+    module_name, separator, class_name = spec.partition(":")
+    if not module_name:
+        raise ValueError("game class must include a module path")
+
     module = importlib.import_module(module_name)
-    game_cls = getattr(module, class_name)
-    if not issubclass(game_cls, GameBase):
-        raise TypeError(f"{spec} is not a GameBase subclass")
-    return game_cls
+
+    if separator:
+        if not class_name:
+            raise ValueError("game class must be in format module.path or module.path:ClassName")
+        try:
+            game_cls = getattr(module, class_name)
+        except AttributeError as exc:
+            raise ValueError(f"{module_name} has no class named {class_name}") from exc
+        if not inspect.isclass(game_cls) or not issubclass(game_cls, GameBase):
+            raise TypeError(f"{spec} is not a GameBase subclass")
+        return game_cls
+
+    game_classes = [
+        obj
+        for _, obj in inspect.getmembers(module, inspect.isclass)
+        if obj.__module__ == module.__name__
+        and obj is not GameBase
+        and issubclass(obj, GameBase)
+    ]
+    if len(game_classes) == 0:
+        raise ValueError(f"No GameBase subclass defined in {module_name}")
+    if len(game_classes) > 1:
+        class_names = ", ".join(cls.__name__ for cls in game_classes)
+        raise ValueError(
+            f"Multiple GameBase subclasses defined in {module_name}: {class_names}. "
+            "Use module.path:ClassName to choose one."
+        )
+    return game_classes[0]
 
 
 def _slugify(value: str) -> str:
@@ -214,7 +240,7 @@ def _build_run_dir(out_root: str, game_name: str) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate autoplay dataset clips for a game.")
-    parser.add_argument("--game-class", required=True, help="Game class in module.path:ClassName format")
+    parser.add_argument("--game-class", required=True, help="Game module path; module.path:ClassName is also accepted")
     parser.add_argument("--output-root", default="generated_data", help="Directory where run folder is created")
     parser.add_argument("--mode", choices=["timelimit", "session"], default="timelimit")
     parser.add_argument("--count", type=int, default=1, help="How many clips to generate")

@@ -70,6 +70,8 @@ class GameBase(ABC):
     # Aspect close to 16:9
     width = 854
     height = 480
+    
+    excludeFromVariants = False  # If True, this base class won't be included as a variant option. Useful for abstract base classes that aren't themselves playable games. Note that subclasses do not need to set this to False — it's only for the base class that defines the variantsPath.
 
     # See getAutoAction() docs
     moveInterval = 4
@@ -261,7 +263,9 @@ def choose_random_variant(game_cls: type[GameBase]) -> type[GameBase]:
     if not os.path.isdir(variants_dir):
         return game_cls
 
-    variant_classes: list[type[GameBase]] = [game_cls]
+    variant_classes: list[type[GameBase]] = []
+    if not game_cls.excludeFromVariants:
+        variant_classes.append(game_cls)
     for filename in os.listdir(variants_dir):
         if not filename.endswith(".py") or filename.startswith("__"):
             continue
