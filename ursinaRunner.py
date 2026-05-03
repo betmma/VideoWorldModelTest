@@ -18,7 +18,21 @@ class _UrsinaBaseRunner(BaseRunner):
     def grab_frame_rgb(self) -> np.ndarray:
         texture = self.game.app.win.getScreenshot()
         if texture is None:
-            raise RuntimeError("Ursina screenshot capture failed")
+            # Give Panda a few more render passes.
+            # Important for scenes with shadow maps / extra render targets.
+            for _ in range(4):
+                self.game.app.graphicsEngine.renderFrame()
+                texture = self.game.app.win.getScreenshot()
+                if texture is not None:
+                    break
+
+        if texture is None:
+            gsg = self.game.app.win.getGsg() if hasattr(self.game.app.win, "getGsg") else None
+            pipe = self.game.app.win.getPipe() if hasattr(self.game.app.win, "getPipe") else None
+            raise RuntimeError(
+                "Ursina screenshot capture failed. "
+                f"pipe={pipe}, gsg={gsg}, active={self.game.app.win.isActive() if hasattr(self.game.app.win, 'isActive') else 'unknown'}"
+            )
 
         data = texture.getRamImageAs("RGB")
         if data is None:

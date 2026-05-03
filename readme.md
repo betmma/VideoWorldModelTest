@@ -1,3 +1,11 @@
+# Clone HY-WorldPlay
+```bash
+git clone https://github.com/betmma/HY-WorldPlay.git
+cd HY-WorldPlay
+git checkout pr-47
+cd ..
+```
+
 # System packages
 
 ```bash
@@ -14,7 +22,7 @@ conda activate VWMT
 pip install pygame-ce ursina opencv-python-headless
 ```
 
-Use `VBMT` for HY-WorldPlay preprocessing and training:
+Use `VBMT` for HY-WorldPlay preprocessing and training (could fail on game-data generation):
 
 ```bash
 conda create -n VBMT python=3.10 -y

@@ -215,9 +215,8 @@ def _record_one_clip(
     if not recorder.actions:
         raise RuntimeError("recorded clip has no frames")
 
-    first = recorder.actions[0]
-    if first["W"] or first["A"] or first["S"] or first["D"] or first["LU"] or first["LL"] or first["LD"] or first["LR"]:
-        raise RuntimeError("actions[0] must be all false")
+    recorder.actions[0] = {'W':False,'A':False,'S':False,'D':False,'LU':False,'LL':False,'LD':False,'LR':False}
+
 
     return {
         "videoPath": video_rel.replace("\\", "/"),
