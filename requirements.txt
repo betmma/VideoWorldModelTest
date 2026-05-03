@@ -1,3 +1,4 @@
 pygame-ce
 ursina
 opencv-python-headless
+-r HY-WorldPlay/requirements.txt
