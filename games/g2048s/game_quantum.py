@@ -14,6 +14,8 @@ from games.g2048 import Game2048, Direction, Tile
 
 
 class QuantumTile(Tile):
+    orbit_time_seconds = 0.0
+
     def draw(
         self,
         screen: pygame.Surface,
@@ -53,7 +55,7 @@ class QuantumTile(Tile):
         font_size = 28 if len(values) == 2 else 24 if len(values) == 3 else 20
         font = pygame.font.SysFont("consolas", font_size, bold=True)
         center_x, center_y = tile_rect.center
-        t = pygame.time.get_ticks() / 1000.0
+        t = self.orbit_time_seconds
         base_angle = t * 1.9
         step = (2.0 * math.pi) / len(values)
 
@@ -81,6 +83,10 @@ class GameQuantum(Game2048):
 
     def _make_tile(self, value: Any, r: int, c: int) -> Tile:
         return QuantumTile(value, r, c)
+
+    def draw(self) -> None:
+        QuantumTile.orbit_time_seconds = self.frame_index / float(self.fps)
+        super().draw()
 
     def _tile_options(self, value: Any) -> list[Any]:
         if isinstance(value, tuple):

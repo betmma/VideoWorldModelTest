@@ -70,6 +70,8 @@ class AutoPlayRunner(BaseRunner):
         pygame.display.flip()
 
     def _tick(self) -> None:
+        if self.game.headless:
+            return
         self.game.clock.tick(self.game.fps)
 
     def _quit(self) -> None:
