@@ -10,21 +10,45 @@ from engineBase import ActionState, BaseRunner, FrameCallback, GameBase, choose_
 
 
 class _UrsinaBaseRunner(BaseRunner):
+    _capture_retry_count = 4
 
     def _handle_events(self) -> None:
         # Ursina processes window events during app.step().
         pass
 
+    def _render_frame_for_capture(self) -> None:
+        graphics_engine = getattr(self.game.app, "graphicsEngine", None)
+        if graphics_engine is not None:
+            graphics_engine.renderFrame()
+
+    def _texture_to_frame_rgb(self, texture) -> np.ndarray:
+        data = texture.getRamImageAs("RGB")
+        if data is None:
+            raise RuntimeError("Ursina screenshot RAM image is unavailable")
+
+        width = texture.getXSize()
+        height = texture.getYSize()
+        frame = np.frombuffer(data, dtype=np.uint8).reshape((height, width, 3))
+        return np.flipud(frame).copy()
+
     def grab_frame_rgb(self) -> np.ndarray:
-        texture = self.game.app.win.getScreenshot()
-        if texture is None:
-            # Give Panda a few more render passes.
-            # Important for scenes with shadow maps / extra render targets.
-            for _ in range(4):
-                self.game.app.graphicsEngine.renderFrame()
-                texture = self.game.app.win.getScreenshot()
-                if texture is not None:
-                    break
+        frame: np.ndarray | None = None
+        texture = None
+        for attempt in range(self._capture_retry_count):
+            # Under Xvfb the first app.step() can leave the onscreen buffer
+            # readable but still black. Force a real Panda render before
+            # taking the screenshot, and retry if the buffer has not filled.
+            self._render_frame_for_capture()
+            texture = self.game.app.win.getScreenshot()
+            if texture is None:
+                continue
+
+            frame = self._texture_to_frame_rgb(texture)
+            if frame.size == 0 or frame.max() > 2 or attempt == self._capture_retry_count - 1:
+                return frame
+
+        if frame is not None:
+            return frame
 
         if texture is None:
             gsg = self.game.app.win.getGsg() if hasattr(self.game.app.win, "getGsg") else None
@@ -34,14 +58,7 @@ class _UrsinaBaseRunner(BaseRunner):
                 f"pipe={pipe}, gsg={gsg}, active={self.game.app.win.isActive() if hasattr(self.game.app.win, 'isActive') else 'unknown'}"
             )
 
-        data = texture.getRamImageAs("RGB")
-        if data is None:
-            raise RuntimeError("Ursina screenshot RAM image is unavailable")
-
-        width = texture.getXSize()
-        height = texture.getYSize()
-        frame = np.frombuffer(data, dtype=np.uint8).reshape((height, width, 3))
-        return np.flipud(frame).copy()
+        raise RuntimeError("Ursina screenshot capture failed after render retries")
 
     def _flip(self) -> None:
         pass
