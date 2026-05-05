@@ -1,6 +1,17 @@
 from __future__ import annotations
 
-import io, os, random, sys, urllib.request, pygame
+import io, os, random, sys, requests, pygame
+import socket
+
+# This forces the socket layer to only return IPv4 addresses
+def allowed_gai_family():
+    return socket.AF_INET
+
+def patch_requests_ipv4():
+    import urllib3.util.connection as conn
+    conn.allowed_gai_family = allowed_gai_family
+
+patch_requests_ipv4()
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -151,8 +162,8 @@ class ImagePieceGameBase(GameBase):
         random_token = random.randint(0, 1_000_000_000)
         image_url = f"https://picsum.photos/{width}/{height}?random={random_token}"
         self.image_url = image_url
-        with urllib.request.urlopen(image_url, timeout=20) as response:
-            image_bytes = response.read()
+        response = requests.get(image_url, timeout=20, headers={'User-Agent': 'Mozilla/5.0'})
+        image_bytes = response.content
         image = pygame.image.load(io.BytesIO(image_bytes), image_url).convert()
         return pygame.transform.smoothscale(image, (width, height))
 

@@ -12,7 +12,7 @@ class RotationPuzzle(ImagePieceGameBase):
 
     name = "Rotation Puzzle"
     board_width = 456
-    board_height = 342
+    board_height = 456
     moveInterval = 4
 
     def __init__(self, headless: bool = False) -> None:
