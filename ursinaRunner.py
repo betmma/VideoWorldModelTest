@@ -64,42 +64,45 @@ class _UrsinaBaseRunner(BaseRunner):
         self._next_frame_deadline = max(self._next_frame_deadline + frame_duration, now + frame_duration)
 
     def _quit(self) -> None:
-        self.game.app.destroy()
+        close = getattr(self.game, "close", None)
+        if callable(close):
+            close()
 
     def run(self) -> int:
-        self.running = True
-        self.frame_index = 0
-        self.rendered_frame_index = 0
-        self.ended_once = False
-        self._next_frame_deadline = time.perf_counter()
+        try:
+            self.running = True
+            self.frame_index = 0
+            self.rendered_frame_index = 0
+            self.ended_once = False
+            self._next_frame_deadline = time.perf_counter()
 
-        self.game.reset()
-        self.game.draw()
-        self.game.app.step()
-        self._emit_frame(self._blank_action(), False)
-        self.rendered_frame_index += 1
-
-        while self.running:
-            self._handle_events()
-            if not self.running:
-                break
-
-            action = self._next_action()
-            ended_this_frame = self.game.update(action)
-            if ended_this_frame:
-                self.ended_once = True
-
+            self.game.reset()
             self.game.draw()
             self.game.app.step()
+            self._emit_frame(self._blank_action(), False)
             self.rendered_frame_index += 1
-            self._emit_frame(action, ended_this_frame)
-            self._tick()
 
-            self.frame_index += 1
-            if self.max_frames is not None and self.frame_index >= self.max_frames:
-                self.running = False
+            while self.running:
+                self._handle_events()
+                if not self.running:
+                    break
 
-        self._quit()
+                action = self._next_action()
+                ended_this_frame = self.game.update(action)
+                if ended_this_frame:
+                    self.ended_once = True
+
+                self.game.draw()
+                self.game.app.step()
+                self.rendered_frame_index += 1
+                self._emit_frame(action, ended_this_frame)
+                self._tick()
+
+                self.frame_index += 1
+                if self.max_frames is not None and self.frame_index >= self.max_frames:
+                    self.running = False
+        finally:
+            self._quit()
         return self.frame_index
 
 

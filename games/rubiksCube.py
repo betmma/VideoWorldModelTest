@@ -81,6 +81,17 @@ class RubiksCube(UrsinaGameBase):
 
         self.update_secondary_camera()
 
+    def close(self) -> None:
+        if self.preview_cam is not None:
+            self.preview_cam.removeNode()
+            self.preview_cam = None
+        if self.preview_buffer is not None:
+            base = getattr(application, "base", None)
+            if base is not None:
+                base.graphicsEngine.removeWindow(self.preview_buffer)
+            self.preview_buffer = None
+        super().close()
+
     def update_secondary_camera(self) -> None:
         if self.preview_cam is None:
             return
