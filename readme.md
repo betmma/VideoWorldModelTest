@@ -10,6 +10,7 @@ cd ..
 
 ```bash
 apt-get install -y xvfb
+apt-get install -y parallel
 ```
 
 # Python environments

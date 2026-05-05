@@ -154,7 +154,7 @@ class TrailMapWolfensteinMaze(WolfensteinMazeBase):
     def getPrompt(self) -> str:
         return (
             f"This is {self.name}. Use A and D to rotate and W and S to move. "
-            "The maze is slightly larger than the base version, and there are several wall maps placed deeper inside it. "
+            "Besides the map at the entrance, there are several wall maps placed deeper inside the maze. "
             "Each map shows the whole layout, and the red dot updates in real time to show your current position. "
             "Reach the far exit opening to win. After entering the maze, going back out through the entrance loses."
         )
