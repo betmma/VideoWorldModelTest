@@ -14,7 +14,7 @@ class TripletMinesweeper(MinesweeperBase):
         self.mine_density = 0.4
     
     def getPrompt(self) -> str:
-        return super().getPrompt() + " [Rule: Triplet - No three mines can form a row (orthogonally or diagonally).]"
+        return super().getPrompt() + " No three mines can form a straight horizontal, vertical, or diagonal row."
         
     def _has_line_of_3(self) -> bool:
         w, h = self.grid_w, self.grid_h

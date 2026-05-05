@@ -27,7 +27,7 @@ class SlidePushSokoban(SokobanBase):
     def getPrompt(self) -> str:
         return (
             f"This is {self.name}. Use W/A/S/D or Arrow keys to move the player one tile at a time. "
-            "Walls block movement. Variant rule: a pushed box keeps sliding forward until the next step would hit a wall or another box. Place every box onto a glowing goal tile to win. After clearing the map, press A or Left Arrow to restart."
+            "Walls block movement. A pushed box keeps sliding forward until the next step would hit a wall or another box. Place every box onto a glowing goal tile to win. After clearing the map, press A or Left Arrow to restart."
         )
 
 

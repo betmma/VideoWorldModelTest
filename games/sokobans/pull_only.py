@@ -20,7 +20,7 @@ class PullOnlySokoban(SokobanBase):
     def getPrompt(self) -> str:
         return (
             f"This is {self.name}. Use W/A/S/D or Arrow keys to move the player one tile at a time. "
-            "Walls block movement. Variant rule: boxes cannot be pushed. A box moves only when you step away from it while it is directly behind you, so you pull it into your previous cell. Place every box onto a glowing goal tile to win. After clearing the map, press A or Left Arrow to restart."
+            "Walls block movement. Boxes cannot be pushed. A box moves only when you step away from it while it is directly behind you, so you pull it into your previous cell. Place every box onto a glowing goal tile to win. After clearing the map, press A or Left Arrow to restart."
         )
 
 

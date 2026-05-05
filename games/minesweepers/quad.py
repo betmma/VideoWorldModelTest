@@ -11,7 +11,7 @@ class QuadMinesweeper(MinesweeperBase):
     name = "Quad Minesweeper"
     
     def getPrompt(self) -> str:
-        return super().getPrompt() + " [Rule: Quad - At least 1 mine in every 2x2 area.]"
+        return super().getPrompt() + " Every 2 by 2 area contains at least one mine."
         
     def generate_board(self, w: int, h: int) -> bool:
         super().generate_board(w, h)

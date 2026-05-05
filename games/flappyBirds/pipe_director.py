@@ -87,7 +87,7 @@ class PipeDirectorFlappyBird(FlappyBirdBase):
 
     def getPrompt(self) -> str:
         return (
-            f"This is {self.name}. Variant rule: the bird flaps automatically and tries to follow a changing target height instead of responding to flap input. "
+            f"This is {self.name}. The bird flaps automatically and tries to follow a changing target height. "
             "You do not control the bird directly. Hold W or Up Arrow to move every pipe upward, and hold S or Down Arrow to move every pipe downward so the gaps line up with the bird's path. The horizontal guide marks the bird's current target height. Passing through a gap scores a point, and hitting a pipe, the ceiling, or the ground ends the run. After crashing, press A or Left Arrow to restart."
         )
 

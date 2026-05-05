@@ -12,7 +12,7 @@ class MultipleMinesweeper(MinesweeperBase):
     name = "Multiple Minesweeper"
     
     def getPrompt(self) -> str:
-        return super().getPrompt() + " [Rule: Multiple - Mines in colored cells count as two.]"
+        return super().getPrompt() + " Mines in colored cells count as two for adjacent clues."
         
     def generate_board(self, w: int, h: int) -> bool:
         self.colored = [[random.random() < 0.3 for c in range(w)] for r in range(h)]

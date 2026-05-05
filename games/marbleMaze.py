@@ -314,7 +314,7 @@ class MarbleMazeUrsina(UrsinaGameBase):
         return (
             f"This is {self.name}. Use W/A/S/D or Arrow keys to tilt the board. "
             f"The marble rolls under gravity toward the low side of the board. Navigate the marble through the maze to reach the green goal tile.{hole_text} Press A to restart after winning."
-            "There is a speed bar at the top left that indicates how fast the marble is rolling."
+            " There is a speed bar at the top left that indicates how fast the marble is rolling."
         )
 
     def getAutoAction(self) -> ActionState:

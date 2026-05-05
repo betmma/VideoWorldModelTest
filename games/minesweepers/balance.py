@@ -13,7 +13,7 @@ class BalanceMinesweeper(MinesweeperBase):
         self.mine_density = 0.4
         
     def getPrompt(self) -> str:
-        return super().getPrompt() + " [Rule: Balance - Square grid, and every row/col has exact same number of mines. Constraints added dynamically.]"
+        return super().getPrompt() + " The board is square, and every row and every column contains exactly the same number of mines."
         
     def generate_board(self, w: int, h: int) -> bool:
         self.grid_w = self.grid_h = max(w, h)

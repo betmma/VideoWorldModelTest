@@ -16,7 +16,7 @@ class LiarMinesweeper(MinesweeperBase):
             "Use Arrow keys to move the cursor. "
             "Press W to reveal a tile. Press S to flag a mine. "
             "When game ends, press A or left arrow key to restart. "
-            "[Rule: Liar - Clues are exactly +1 or -1 from the true value.]"
+            "Every clue is exactly one higher or one lower than the true adjacent mine count."
         )
         
     def calculate_clues(self) -> None:

@@ -11,7 +11,7 @@ class WallMinesweeper(MinesweeperBase):
     name = "Wall Minesweeper"
     
     def getPrompt(self) -> str:
-        return super().getPrompt() + " [Rule: Wall - Clues show lengths of consecutive mine blocks in 8 neighbors.]"
+        return super().getPrompt() + " Each clue lists the lengths of contiguous mine blocks around its eight neighboring cells in circular order."
         
     def get_ordered_neighbors(self, r: int, c: int):
         dirs = [(-1, -1), (-1, 0), (-1, 1), (0, 1), (1, 1), (1, 0), (1, -1), (0, -1)]

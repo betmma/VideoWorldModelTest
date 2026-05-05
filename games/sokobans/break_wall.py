@@ -26,7 +26,7 @@ class BreakWallSokoban(SokobanBase):
     def getPrompt(self) -> str:
         return (
             f"This is {self.name}. Use W/A/S/D or Arrow keys to move the player one tile at a time. "
-            "Walls block movement. Variant rule: if you push a box directly into a wall, the box and that wall both disappear. Otherwise boxes push normally. Place every remaining box onto a glowing goal tile to win. After clearing the map, press A or Left Arrow to restart."
+            "Walls block movement. A box pushed directly into a wall makes the box and that wall disappear. A box pushed into open space moves one tile. Place every remaining box onto a glowing goal tile to win. After clearing the map, press A or Left Arrow to restart."
         )
 
 

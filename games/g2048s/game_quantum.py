@@ -275,7 +275,7 @@ class GameQuantum(Game2048):
         return super()._get_tile_color(value)
 
     def getPrompt(self) -> str:
-        return "This is Quantum 2048. Use W/A/S/D or Arrow keys to slide tiles. Some spawned tiles are quantum tiles such as (2, 4), meaning the tile can be either value. When a swipe affects a line with quantum tiles, the line splits into timelines for each quantum possibility, then each timeline applies normal 2048 movement and merges. If at least one timeline gets a merge, all non-merge timelines collapse away. The surviving timelines are stacked back into one board, and cells with multiple surviving outcomes become quantum tiles."
+        return "This is Quantum 2048. Use W/A/S/D or Arrow keys to slide tiles. Some spawned tiles are quantum tiles such as (2, 4), meaning the tile can be either value. When a swipe affects a line with quantum tiles, the line splits into timelines for each quantum possibility, then each timeline slides in the chosen direction and equal values merge into doubled values. If at least one timeline gets a merge, all non-merge timelines collapse away. The surviving timelines are stacked back into one board, and cells with multiple surviving outcomes become quantum tiles."
 
 
 if __name__ == "__main__":

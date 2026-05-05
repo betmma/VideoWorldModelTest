@@ -10,7 +10,7 @@ class CrossMinesweeper(MinesweeperBase):
     name = "Cross Minesweeper"
     
     def getPrompt(self) -> str:
-        return super().getPrompt() + " [Rule: Cross - Clues count mines in a cross (+) shape within a 2-tile distance.]"
+        return super().getPrompt() + " Each clue counts mines in a plus-shaped area up to two tiles away horizontally and vertically."
         
     def get_adjacent(self, r: int, c: int) -> list[tuple[int, int]]:
         adj = []

@@ -17,7 +17,7 @@ class MultiPushSokoban(SokobanBase):
     def getPrompt(self) -> str:
         return (
             f"This is {self.name}. Use W/A/S/D or Arrow keys to move the player one tile at a time. "
-            "Walls block movement. Variant rule: if there is free space in front, you can push a whole line of touching boxes at once instead of only one box. Place every box onto a glowing goal tile to win. After clearing the map, press A or Left Arrow to restart."
+            "Walls block movement. If there is free space in front of the line, you can push a whole line of touching boxes at once. Place every box onto a glowing goal tile to win. After clearing the map, press A or Left Arrow to restart."
         )
 
 

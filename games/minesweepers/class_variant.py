@@ -10,7 +10,7 @@ class ClassMinesweeper(MinesweeperBase):
     name = "Class Minesweeper"
     
     def getPrompt(self) -> str:
-        return super().getPrompt() + " [Rule: Class - 2 colors. Clue shows [A, B] representing mines in each color, but ordered by size.]"
+        return super().getPrompt() + " Mines belong to two color groups. Each clue shows the two adjacent mine counts as smaller-larger, ordered by count rather than by color."
         
     def generate_board(self, w: int, h: int) -> bool:
         self.color_map = [[random.choice([0, 1]) for c in range(w)] for r in range(h)]

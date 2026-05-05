@@ -14,7 +14,7 @@ class DualMinesweeper(MinesweeperBase):
         self.mine_density = 0.4
     
     def getPrompt(self) -> str:
-        return super().getPrompt() + " [Rule: Dual - Each mine touches exactly 1 other mine orthogonally.]"
+        return super().getPrompt() + " Every mine touches exactly one other mine orthogonally."
         
     def generate_board(self, w: int, h: int) -> bool:
         self.grid_w = w

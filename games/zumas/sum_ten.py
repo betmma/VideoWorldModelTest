@@ -63,7 +63,7 @@ class SumTenZuma(ZumaBase):
     def getPrompt(self) -> str:
         return (
             f"This is {self.name}. A or Left rotates the stone frog left, and D or Right rotates it right. "
-            "Press W or Up Arrow to shoot the loaded numbered ball into the moving chain. Press S or Down Arrow to swap the loaded ball with the reserve ball. Variant rule: any touching contiguous segment whose numbers sum to 10 disappears, which can trigger more clears after gaps close. Clear the whole chain before the front reaches the tunnel at the end of the track. After winning or losing, press A or Left Arrow to restart."
+            "Press W or Up Arrow to shoot the loaded numbered ball into the moving chain. Press S or Down Arrow to swap the loaded ball with the reserve ball. Any touching contiguous segment whose numbers sum to 10 disappears, which can trigger more clears after gaps close. Clear the whole chain before the front reaches the tunnel at the end of the track. After winning or losing, press A or Left Arrow to restart."
         )
 
 

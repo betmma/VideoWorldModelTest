@@ -56,9 +56,9 @@ class GravityFlipFlappyBird(FlappyBirdBase):
 
     def getPrompt(self) -> str:
         return (
-            f"This is {self.name}. Variant rule: the bird uses VVVVVV-style controls. "
-            "Press W or Up Arrow to flip gravity instead of flapping, and the bird sprite flips upside down whenever gravity points upward. "
-            "Pipes still scroll in from the right, you score by passing through their gaps, and hitting a pipe, the ceiling, or the ground ends the run. After crashing, press A or Left Arrow to restart."
+            f"This is {self.name}. "
+            "Press W or Up Arrow to reverse gravity. The bird is pulled in the current gravity direction, and the bird sprite flips upside down whenever gravity points upward. "
+            "Pipes scroll in from the right, you score by passing through their gaps, and hitting a pipe, the ceiling, or the ground ends the run. After crashing, press A or Left Arrow to restart."
         )
 
     def getAutoAction(self) -> ActionState:

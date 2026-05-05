@@ -24,7 +24,7 @@ class BehindPushSokoban(SokobanBase):
     def getPrompt(self) -> str:
         return (
             f"This is {self.name}. Use W/A/S/D or Arrow keys to move the player one tile at a time. "
-            "Walls block movement. Variant rule: when you push a box, it teleports to the cell directly behind your original position, so the push fails if that back cell is not empty. Place every box onto a glowing goal tile to win. After clearing the map, press A or Left Arrow to restart."
+            "Walls block movement. When you push a box, it teleports to the cell directly behind the player's starting cell for that move, and the push fails if that back cell is not empty. Place every box onto a glowing goal tile to win. After clearing the map, press A or Left Arrow to restart."
         )
 
 

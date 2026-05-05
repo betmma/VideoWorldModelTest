@@ -8,7 +8,7 @@ class DeviatedMinesweeper(MinesweeperBase):
     name = "Deviated Minesweeper"
     
     def getPrompt(self) -> str:
-        return super().getPrompt() + " [Rule: Deviated - Adjacent cells are the 3x3 grid centered on the cell ABOVE the clue.]"
+        return super().getPrompt() + " Each clue counts mines in the 3 by 3 area centered one tile above the clue, excluding the clue tile itself."
         
     def get_adjacent(self, r: int, c: int) -> list[tuple[int, int]]:
         adj = []

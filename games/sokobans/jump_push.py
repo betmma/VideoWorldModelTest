@@ -24,7 +24,7 @@ class JumpPushSokoban(SokobanBase):
     def getPrompt(self) -> str:
         return (
             f"This is {self.name}. Use W/A/S/D or Arrow keys to move the player one tile at a time. "
-            "Walls block movement. Variant rule: a pushed box jumps exactly two cells forward, skipping over the middle cell, and the push fails if the landing cell is not empty. Place every box onto a glowing goal tile to win. After clearing the map, press A or Left Arrow to restart."
+            "Walls block movement. A pushed box jumps exactly two cells forward, skipping over the middle cell, and the push fails if the landing cell is not empty. Place every box onto a glowing goal tile to win. After clearing the map, press A or Left Arrow to restart."
         )
 
 

@@ -71,7 +71,7 @@ class OrderedTrioZuma(ZumaBase):
     def getPrompt(self) -> str:
         return (
             f"This is {self.name}. A or Left rotates the stone frog left, and D or Right rotates it right. "
-            "Press W or Up Arrow to shoot the loaded colored ball into the moving chain. Press S or Down Arrow to swap the loaded ball with the reserve ball. Variant rule: each round only uses three colors, and a group disappears only when three touching balls match the displayed head-to-tail color order exactly. The displayed order changes each round. Clear the whole chain before the front reaches the tunnel at the end of the track. After winning or losing, press A or Left Arrow to restart."
+            "Press W or Up Arrow to shoot the loaded colored ball into the moving chain. Press S or Down Arrow to swap the loaded ball with the reserve ball. Each round uses only three colors, and a group disappears only when three touching balls match the displayed head-to-tail color order exactly. The displayed order changes each round. Clear the whole chain before the front reaches the tunnel at the end of the track. After winning or losing, press A or Left Arrow to restart."
         )
 
 if __name__ == "__main__":

@@ -16,7 +16,7 @@ class NegationMinesweeper(MinesweeperBase):
             "Use Arrow keys to move the cursor. "
             "Press W to reveal a tile. Press S to flag a mine. "
             "When game ends, press A or left arrow key to restart. "
-            "[Rule: Negation - Clues equal exact difference in mine counts between colored (+1) and uncolored (-1) cells.]"
+            "Colored adjacent mines add one to a clue, and uncolored adjacent mines subtract one from it. The shown clue is the exact signed total."
         )
         
     def generate_board(self, w: int, h: int) -> bool:

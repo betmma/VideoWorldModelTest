@@ -44,7 +44,7 @@ class AngleFlightFlappyBird(FlappyBirdBase):
 
     def getPrompt(self) -> str:
         return (
-            f"This is {self.name}. Variant rule: there is no gravity, and the bird continuously flies forward at a fixed speed while the scene side-scrolls. "
+            f"This is {self.name}. The bird continuously flies forward at a fixed speed with no gravity while the scene side-scrolls. "
             "Hold A or Left Arrow to rotate counterclockwise so the bird climbs, and hold D or Right Arrow to rotate clockwise so the bird dives. Flying through a gap scores a point, and hitting a pipe, the ceiling, or the ground ends the run. After crashing, press A or Left Arrow to restart."
         )
 

@@ -13,7 +13,7 @@ class HorizontalMinesweeper(MinesweeperBase):
         self.mine_density = 0.4
         
     def getPrompt(self) -> str:
-        return super().getPrompt() + " [Rule: Horizontal - Every mine is adjacent horizontally to at least 1 other mine.]"
+        return super().getPrompt() + " Every mine has at least one mine immediately to its left or right."
         
     def generate_board(self, w: int, h: int) -> bool:
         self.grid_w = w

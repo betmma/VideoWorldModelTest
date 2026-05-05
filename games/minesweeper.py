@@ -538,11 +538,18 @@ class MinesweeperBase(GameBase):
             self.screen.blit(txt, txt.get_rect(center=(self.width // 2, self.height // 2 - 20)))
 
     def getPrompt(self) -> str:
-        return f"This is {self.name}. "+\
-            "Use Arrow keys to move the cursor. "+\
-            "Press W to reveal a tile. Press S to flag a mine. "+\
-            ("Press A to fast open adjacent tiles if the number of flags matches the clue." if self.can_fast_open(1,1) else "")+\
+        fast_open_text = (
+            "Press A to fast open adjacent tiles if the number of flags matches the clue. "
+            if self.can_fast_open(1, 1)
+            else ""
+        )
+        return (
+            f"This is {self.name}. "
+            "Use Arrow keys to move the cursor. "
+            "Press W to reveal a tile. Press S to flag a mine. "
+            f"{fast_open_text}"
             "When game ends, press A or left arrow key to restart."
+        )
         
 
     def deduce_step(self) -> list[tuple[int, int, str]]:

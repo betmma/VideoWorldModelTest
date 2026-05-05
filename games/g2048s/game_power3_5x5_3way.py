@@ -29,7 +29,7 @@ class GamePower3_5x5_3way(Game2048):
         return 3 if random.random() < 0.8 else 9
 
     def getPrompt(self) -> str:
-        return f"This is a 5x5 Power of 3 variant with triple merges. Use W/A/S/D or Arrow keys to slide all tiles in one direction. Exactly three adjacent equal-numbered tiles merge into one tile with triple value. After each valid move, a new 3 tile appears most of the time, and a 9 tile appears occasionally. The game ends when there are no valid moves left. Reach the {self.target_tile} tile to win!"
+        return f"This is 5x5 Power of 3 Triple Merge. Use W/A/S/D or Arrow keys to slide all tiles in one direction. Exactly three adjacent equal-numbered tiles merge into one tile with triple value. After each valid move, a new 3 tile appears most of the time, and a 9 tile appears occasionally. The game ends when there are no valid moves left. Reach the {self.target_tile} tile to win!"
 
 
 if __name__ == "__main__":

@@ -9,7 +9,7 @@ class PartitionMinesweeper(MinesweeperBase):
     name = "Partition Minesweeper"
     
     def getPrompt(self) -> str:
-        return super().getPrompt() + " [Rule: Partition - Clue counts the number of separate islands of consecutive mines among the 8 neighbors.]"
+        return super().getPrompt() + " Each clue counts how many separate contiguous groups of mines appear around its eight neighboring cells in circular order."
         
     def get_ordered_neighbors(self, r: int, c: int):
         dirs = [(-1, -1), (-1, 0), (-1, 1), (0, 1), (1, 1), (1, 0), (1, -1), (0, -1)]
