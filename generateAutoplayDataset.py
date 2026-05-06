@@ -228,7 +228,7 @@ def _record_one_clip(
 
 
 def _build_run_dir(out_root: str, game_name: str) -> str:
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     folder = f"{stamp}_{_slugify(game_name)}"
     run_dir = os.path.join(out_root, folder)
     os.makedirs(os.path.join(run_dir, "videos"), exist_ok=False)

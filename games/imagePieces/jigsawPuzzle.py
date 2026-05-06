@@ -247,7 +247,7 @@ class JigsawPuzzle(ImagePieceGameBase):
         pygame.draw.line(self.screen, self.cursor_color, (center[0], center[1] - 16), (center[0], center[1] - 5), 2)
         pygame.draw.line(self.screen, self.cursor_color, (center[0], center[1] + 5), (center[0], center[1] + 16), 2)
 
-    def getAutoAction(self) -> ActionState:
+    def getAutoAction(self, frame_index: int) -> ActionState:
         """Return autoplay actions that move pieces home, sometimes placing one wrong before correcting it."""
         action = self.BLANK_ACTION.copy()
         if self.frame_index == 0 or self.solved:

@@ -947,11 +947,11 @@ class SudokuBase(GameBase):
         self.auto_error_cell = None
         return self.plan_keypad_entry(target_row, target_col, self.solution[target_row][target_col])
 
-    def getAutoAction(self) -> ActionState:
+    def getAutoAction(self, frame_index: int) -> ActionState:
         """Return an imperfect autoplay action that sometimes causes visible mistakes."""
         action = self.BLANK_ACTION.copy()
 
-        if self.frame_index % self.moveInterval != 0:
+        if frame_index % self.moveInterval != 0:
             return action
         if self.win:
             return action

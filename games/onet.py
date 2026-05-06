@@ -1047,10 +1047,10 @@ class OnetBase(GameBase):
         route.reverse()
         return route
 
-    def getAutoAction(self) -> ActionState:
+    def getAutoAction(self, frame_index: int) -> ActionState:
         """Return a logical autoplay action that respects the every-fourth-frame cadence."""
         action = self.BLANK_ACTION.copy()
-        if self.frame_index == 0 or self.frame_index % self.moveInterval != 0:
+        if frame_index == 0 or frame_index % self.moveInterval != 0:
             return action
         if self.win or self.animating:
             return action

@@ -934,7 +934,7 @@ class CarParkingBase(pygameBase.GameBase):
 
         return nearest_distance, nearest_side
 
-    def getAutoAction(self) -> pygameBase.ActionState:
+    def getAutoAction(self, frame_index: int) -> pygameBase.ActionState:
         """Drive with a weak noisy heuristic that sometimes succeeds and sometimes fails."""
         action = self.BLANK_ACTION.copy()
         if self.won or self.crashed or self.timed_out:

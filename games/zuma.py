@@ -1571,12 +1571,12 @@ class ZumaBase(GameBase):
             "Press W or Up Arrow to shoot the loaded colored ball into the moving chain. Press S or Down Arrow to swap the loaded ball with the reserve ball. If three or more adjacent touching balls of the same color meet, they disappear and can trigger chain reactions after the gap closes. Clear the whole chain before the front reaches the tunnel at the end of the track. After winning or losing, press A or Left Arrow to restart on a newly generated random track."
         )
 
-    def getAutoAction(self) -> ActionState:
+    def getAutoAction(self, frame_index: int) -> ActionState:
         action = self.BLANK_ACTION.copy()
         self.next_shot_hits_chain = True
 
         if self.win or self.game_over:
-            if self.frame_index % self.moveInterval == 0 and random.random() < 0.18:
+            if frame_index % self.moveInterval == 0 and random.random() < 0.18:
                 action["A"] = True
             return action
 
@@ -1615,7 +1615,7 @@ class ZumaBase(GameBase):
         plan = reserve_plan if use_swap else current_plan
 
         if use_swap:
-            if self.frame_index % self.moveInterval == 0:
+            if frame_index % self.moveInterval == 0:
                 action["S"] = True
             return action
 
@@ -1633,7 +1633,7 @@ class ZumaBase(GameBase):
             else:
                 action["D"] = True
 
-        if self.frame_index % self.moveInterval != 0:
+        if frame_index % self.moveInterval != 0:
             return action
 
         if abs(angle_diff) < 0.035 and len(self.projectiles) < self.max_projectiles:

@@ -268,10 +268,10 @@ class Game2048(GameBase):
             f"When two tiles with the same value collide, they merge into one tile with doubled value. After each valid move, a new tile appears in an empty cell. The new tile is mostly 2, occasionally 4. The game ends when there are no valid moves left. Reach the {self.target_tile} tile to win!"
         )
 
-    def getAutoAction(self) -> ActionState:
+    def getAutoAction(self, frame_index: int) -> ActionState:
         action = self.BLANK_ACTION.copy()
 
-        if self.frame_index % self.moveInterval != 0:
+        if frame_index % self.moveInterval != 0:
             return action
 
         if self._is_game_over() and not self.is_move_animating:

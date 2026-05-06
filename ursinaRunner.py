@@ -139,7 +139,7 @@ class UrsinaHumanRunner(_UrsinaBaseRunner):
 
 class UrsinaAutoPlayRunner(_UrsinaBaseRunner):
     def _next_action(self) -> ActionState:
-        return self.game.getAutoAction()
+        return self.game.getAutoAction(self.frame_index)
 
 
 def run_human_debug(

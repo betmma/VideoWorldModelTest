@@ -96,7 +96,7 @@ class AngleFlightFlappyBird(FlappyBirdBase):
         self._check_pipe_collision()
         return False
 
-    def getAutoAction(self) -> ActionState:
+    def getAutoAction(self, frame_index: int) -> ActionState:
         action = self.BLANK_ACTION.copy()
 
         if self.game_over:

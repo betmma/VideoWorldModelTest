@@ -359,10 +359,10 @@ class BrickBreakerBase(GameBase):
             "Press W or Up Arrow to launch the ball. The ball bounces off walls and the paddle. Break all bricks to win. Missing the ball costs one life. When game ends, press A or Left Arrow to restart."
         )
 
-    def getAutoAction(self) -> ActionState:
+    def getAutoAction(self, frame_index: int) -> ActionState:
         action = self.BLANK_ACTION.copy()
 
-        if self.frame_index % self.moveInterval != 0:
+        if frame_index % self.moveInterval != 0:
             return self.prev_action
         
         if self.win or self.game_over:
@@ -375,7 +375,7 @@ class BrickBreakerBase(GameBase):
             return action
 
         if self.ball_stuck:
-            if self.frame_index % self.moveInterval != 0:
+            if frame_index % self.moveInterval != 0:
                 return action
             if random.random() < 0.25:
                 action["W"] = True

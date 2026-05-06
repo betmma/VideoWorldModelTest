@@ -492,10 +492,10 @@ class OrbitalBrickBreaker(BrickBreakerBase):
         t = min(future_times)
         return math.atan2(dy + vy * t, dx + vx * t)
 
-    def getAutoAction(self) -> ActionState:
+    def getAutoAction(self, frame_index: int) -> ActionState:
         action = self.BLANK_ACTION.copy()
 
-        if self.frame_index % self.moveInterval != 0:
+        if frame_index % self.moveInterval != 0:
             return self.prev_action
 
         if self.win or self.game_over:

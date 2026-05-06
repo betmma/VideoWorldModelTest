@@ -562,10 +562,10 @@ class PowerDropBrickBreaker(BrickBreakerBase):
             return None
         return max(catchable_items, key=lambda item: item.y)
 
-    def getAutoAction(self) -> ActionState:
+    def getAutoAction(self, frame_index: int) -> ActionState:
         action = self.BLANK_ACTION.copy()
 
-        if self.frame_index % self.moveInterval != 0:
+        if frame_index % self.moveInterval != 0:
             return self.prev_action
 
         if self.win or self.game_over:

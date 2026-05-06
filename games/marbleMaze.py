@@ -317,7 +317,7 @@ class MarbleMazeUrsina(UrsinaGameBase):
             " There is a speed bar at the top left that indicates how fast the marble is rolling."
         )
 
-    def getAutoAction(self) -> ActionState:
+    def getAutoAction(self, frame_index: int) -> ActionState:
         action = self.BLANK_ACTION.copy()
         if self.win:
             if random.random() < 0.05:

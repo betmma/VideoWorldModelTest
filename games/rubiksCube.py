@@ -173,14 +173,13 @@ class RubiksCube(UrsinaGameBase):
     def getPrompt(self) -> str:
         return "Rubik's Cube simulation. Use W/A/S/D to move the cursor across the visible faces. Moving the cursor over the edge will rotate the entire cube to reveal hidden faces. Use the Up/Left/Down/Right arrows to rotate the currently selected slice/layer."
 
-    def getAutoAction(self) -> ActionState:
+    def getAutoAction(self, frame_index: int) -> ActionState:
         action = self.BLANK_ACTION.copy()
         
         if self.animating:
             return action
         
-        self.frames += 1
-        if self.frames % self.moveInterval != 0:
+        if frame_index % self.moveInterval != 0:
             return action
             
         self.auto_timer -= 1

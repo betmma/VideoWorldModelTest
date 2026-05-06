@@ -424,10 +424,10 @@ class FlappyBirdBase(GameBase):
             "The bird constantly falls due to gravity while pipes scroll in from the right. Fly through the gaps between the pipes to score points. Hitting a pipe, the ceiling, or the ground ends the run. After crashing, press A or Left Arrow to restart."
         )
 
-    def getAutoAction(self) -> ActionState:
+    def getAutoAction(self, frame_index: int) -> ActionState:
         action = self.BLANK_ACTION.copy()
 
-        if self.frame_index % self.moveInterval != 0:
+        if frame_index % self.moveInterval != 0:
             return action
 
         if self.game_over:

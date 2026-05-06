@@ -169,12 +169,12 @@ class RotationPuzzle(ImagePieceGameBase):
         self.screen.blit(shadow, shadow.get_rect(center=(text_rect.centerx + 3, text_rect.centery + 4)))
         self.screen.blit(text, text_rect)
 
-    def getAutoAction(self) -> ActionState:
+    def getAutoAction(self, frame_index: int) -> ActionState:
         """Return logical autoplay actions that rotate tiles upright."""
         action = self.BLANK_ACTION.copy()
         if self.frame_index == 0 or self.solved or self.animating:
             return action
-        if self.frame_index % self.moveInterval != 0:
+        if frame_index % self.moveInterval != 0:
             return action
         if self.auto_wait_frames > 0:
             self.auto_wait_frames -= 1

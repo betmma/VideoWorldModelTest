@@ -112,15 +112,16 @@ class GameBase(ABC):
         """
         Return a string prompt describing the rules of the game for training.
         Every variant should return its own prompt.
+        The wording must be scoped to this game. That means, it should not imply it's a variant or how it's different from the original game or omit the common rules between variant and original game. It should not imply the coding process like "fixed the bug of ..." or "as requested by user". It must be self-contained rule descriptions.
         """
 
     @abstractmethod
-    def getAutoAction(self) -> ActionState:
+    def getAutoAction(self, frame_index: int) -> ActionState:
         """
         Implement a logical, somewhat randomised auto-play agent.
-        Called every frame. Must have internal state and should not act at a
+        Called every frame with the runner's global frame index. Must have internal state and should not act at a
         perfectly steady interval to imitate human reaction times.
-        If the game's action happens at key pressed down instead of holding key, auto action should only execute actions at multiples of moveInterval frames. A pattern is to have a frame attribute in the game class, and if frame%moveInterval != 0, return empty action. Still auto action should not perform action at a steady moveInterval.
+        If the game's action happens at key pressed down instead of holding key, auto action should only execute actions at multiples of moveInterval frames. Check frame_index % moveInterval so resets inside a long recording do not shift the dataset cadence. Still auto action should not perform action at a steady moveInterval.
         """
 
 

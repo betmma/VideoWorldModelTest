@@ -61,10 +61,10 @@ class GravityFlipFlappyBird(FlappyBirdBase):
             "Pipes scroll in from the right, you score by passing through their gaps, and hitting a pipe, the ceiling, or the ground ends the run. After crashing, press A or Left Arrow to restart."
         )
 
-    def getAutoAction(self) -> ActionState:
+    def getAutoAction(self, frame_index: int) -> ActionState:
         action = self.BLANK_ACTION.copy()
 
-        if self.frame_index % self.moveInterval != 0:
+        if frame_index % self.moveInterval != 0:
             return action
 
         if self.game_over:

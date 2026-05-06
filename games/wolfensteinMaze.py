@@ -651,7 +651,7 @@ class WolfensteinMazeBase(GameBase):
         """Describe controls and win or loss conditions for training and debugging."""
         return "This is a Wolfenstein-style first-person maze. Use A and D to rotate the player. Use W and S to move forward or backward. The player starts outside the maze, facing a 2D map mounted on the outer wall beside the entrance. Reach the far exit opening to win. After entering the maze, going back out through the entrance loses."
 
-    def getAutoAction(self) -> ActionState:
+    def getAutoAction(self, frame_index: int) -> ActionState:
         """Drive a noisy first-person autoplayer that often detours, bumps walls, and sometimes exits the wrong way."""
         action = self.BLANK_ACTION.copy()
         if self.finish_state:

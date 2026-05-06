@@ -320,10 +320,10 @@ class MazeGame(GameBase):
             "Navigate through the maze and reach the green goal tile to win."
         )
 
-    def getAutoAction(self) -> ActionState:
+    def getAutoAction(self, frame_index: int) -> ActionState:
         action = self.BLANK_ACTION.copy()
 
-        if self.frame_index % self.moveInterval != 0:
+        if frame_index % self.moveInterval != 0:
             return action
 
         if self.win and not self.is_moving:

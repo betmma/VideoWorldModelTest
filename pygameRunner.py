@@ -53,7 +53,7 @@ class AutoPlayRunner(BaseRunner):
     """Runner for automated play; intended for data/video pipelines."""
 
     def _next_action(self) -> ActionState:
-        return self.game.getAutoAction()
+        return self.game.getAutoAction(self.frame_index)
 
     def _handle_events(self) -> None:
         for event in pygame.event.get():
