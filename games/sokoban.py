@@ -223,6 +223,8 @@ class SokobanBase(GameBase):
         self.player_r, self.player_c = player
 
         for r, c, kind in box_specs:
+            if (r, c) == player:
+                continue
             box = self._make_box(r, c, kind=kind)
             self.boxes.append(box)
             self.box_map[(r, c)] = box
@@ -508,10 +510,10 @@ class SokobanBase(GameBase):
                 floors.add((side_r, side_c))
 
         empty_cells = list(floors)
-        open_cells = [(r, c) for r, c in empty_cells[1:] if ((r-1,c) in floors) + ((r+1,c) in floors) + ((r,c-1) in floors) + ((r,c+1) in floors) >= 3]
         random.shuffle(empty_cells)
         box_count = 3
         player = empty_cells[0]
+        open_cells = [(r, c) for r, c in empty_cells[1:] if ((r-1,c) in floors) + ((r+1,c) in floors) + ((r,c-1) in floors) + ((r,c+1) in floors) >= 3]
         box_cells = open_cells[:box_count]
         if len(open_cells) < box_count:
             for cell in empty_cells[1:]:

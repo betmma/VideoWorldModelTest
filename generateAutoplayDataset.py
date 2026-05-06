@@ -215,8 +215,8 @@ def _record_one_clip(
     if not recorder.actions:
         raise RuntimeError("recorded clip has no frames")
 
-    recorder.actions[0] = {'W':False,'A':False,'S':False,'D':False,'LU':False,'LL':False,'LD':False,'LR':False}
-
+    if any(recorder.actions[0].values()):
+        raise RuntimeError("first recorded action must be blank; runner action/frame alignment is broken")
 
     return {
         "videoPath": video_rel.replace("\\", "/"),

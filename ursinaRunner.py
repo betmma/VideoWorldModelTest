@@ -96,8 +96,7 @@ class _UrsinaBaseRunner(BaseRunner):
             self.game.reset()
             self.game.draw()
             self.game.app.step()
-            self._emit_frame(self._blank_action(), False)
-            self.rendered_frame_index += 1
+            self._emit_rendered_frame(self._blank_action(), False)
 
             while self.running:
                 self._handle_events()
@@ -111,16 +110,14 @@ class _UrsinaBaseRunner(BaseRunner):
 
                 self.game.draw()
                 self.game.app.step()
-                self.rendered_frame_index += 1
-                self._emit_frame(action, ended_this_frame)
-                self._tick()
+                self._emit_rendered_frame(action, ended_this_frame)
+                if self.running:
+                    self._tick()
 
                 self.frame_index += 1
-                if self.max_frames is not None and self.frame_index >= self.max_frames:
-                    self.running = False
         finally:
             self._quit()
-        return self.frame_index
+        return self.rendered_frame_index
 
 
 class UrsinaHumanRunner(_UrsinaBaseRunner):

@@ -205,6 +205,18 @@ class BaseRunner(ABC):
         if should_continue is False:
             self.running = False
 
+    def _emit_rendered_frame(self, action: ActionState, ended_this_frame: bool) -> None:
+        """Emit the current drawn frame and advance the rendered-frame index."""
+        if self.max_frames is not None and self.rendered_frame_index >= self.max_frames:
+            self.running = False
+            return
+
+        self._emit_frame(action, ended_this_frame)
+        self.rendered_frame_index += 1
+
+        if self.max_frames is not None and self.rendered_frame_index >= self.max_frames:
+            self.running = False
+
     # ------------------------------------------------------------------
     # Concrete frame loop
     # ------------------------------------------------------------------
@@ -212,7 +224,8 @@ class BaseRunner(ABC):
     def run(self) -> int:
         """
         Run the game loop until a quit signal or max_frames is reached.
-        Returns the total number of processed frames.
+        max_frames limits emitted rendered frames, including the initial frame.
+        Returns the total number of emitted rendered frames.
         """
         self.running = True
         self.frame_index = 0
@@ -222,12 +235,14 @@ class BaseRunner(ABC):
         self.game.draw()
         if not self.game.headless:
             self._flip()
+        self._emit_rendered_frame(self._blank_action(), False)
 
         while self.running:
             self._handle_events()
             if not self.running:
                 break
 
+            self.frame_index += 1
             action = self._next_action()
             ended_this_frame = self.game.update(action)
             if ended_this_frame:
@@ -236,16 +251,12 @@ class BaseRunner(ABC):
             self.game.draw()
             if not self.game.headless:
                 self._flip()
-            self.rendered_frame_index += 1
-            self._emit_frame(action, ended_this_frame)
-            self._tick()
-
-            self.frame_index += 1
-            if self.max_frames is not None and self.frame_index >= self.max_frames:
-                self.running = False
+            self._emit_rendered_frame(action, ended_this_frame)
+            if self.running:
+                self._tick()
 
         self._quit()
-        return self.frame_index
+        return self.rendered_frame_index
 
 
 # ---------------------------------------------------------------------------
