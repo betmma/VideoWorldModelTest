@@ -85,6 +85,7 @@ python generateAutoplayDataset.py --game-class games.marbleMaze:MarbleMazeUrsina
 # Preprocess debug data for HY-WorldPlay
 
 This writes HY-WorldPlay training artifacts to `./preprocessed`, including `dataset_index.json`, `.pt` tensor bundles, dense identity-pose JSON, and dense discrete-action JSON.
+Long source videos are split into random overlapping clips. Clip lengths are aligned to `4n+1` frames, and the last frame of each clip is reused as the first frame of the next clip.
 
 ```bash
 conda activate VBMT
@@ -92,7 +93,8 @@ python preprocess_debug_hyworldplay.py \
   --input_dir ./debug \
   --output_dir ./preprocessed \
   --model_path ./model_ckpts/HunyuanVideo-1.5 \
-  --target_num_frames 129 \
+  --clip_min_frames 125 \
+  --clip_max_frames 637 \
   --device cuda
 ```
 
@@ -100,5 +102,6 @@ Quick input validation without loading model checkpoints:
 
 ```bash
 conda activate VBMT
-python preprocess_debug_hyworldplay.py --dry_run
+python preprocess_debug_hyworldplay.py --input_dir ./debug --dry_run
+python preprocess_debug_hyworldplay.py --input_dir ./.debugSplit/20260506_123546_841086_sokoban --dry_run
 ```

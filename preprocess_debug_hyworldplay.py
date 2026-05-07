@@ -16,6 +16,11 @@ The output layout matches HY-WorldPlay's CameraJsonWMemDataset index format:
         <segment_id>_latent.pt
         <segment_id>_pose.json
         <segment_id>_action.json
+        <segment_id>_first_frame.jpg
+
+Long source videos are split into random overlapping clips. Every clip starts
+on a multiple-of-4 source frame, has a 4n+1 frame count, and shares its first
+frame with the previous clip's last frame.
 """
 
 from __future__ import annotations
@@ -25,15 +30,26 @@ import importlib.util
 import json
 import logging
 import math
+import random
 import shutil
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Sequence, Tuple
+from typing import Any, Dict, List, NamedTuple, Sequence, Tuple
 
 
 LOGGER = logging.getLogger("preprocess_debug_hyworldplay")
 ACTION_KEYS = ("W", "A", "S", "D", "LU", "LD", "LL", "LR")
 DEFAULT_VIEW_PRIORITY = ("LR", "LL", "LU", "LD")
+
+
+class ClipSpec(NamedTuple):
+    """Frame range for one overlapping training clip."""
+
+    clip_idx: int
+    start_frame: int
+    frame_count: int
+    source_frame_count: int
+    usable_frame_count: int
 
 
 def parse_args() -> argparse.Namespace:
@@ -73,10 +89,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--target_height", type=int, default=480)
     parser.add_argument("--target_width", type=int, default=832)
     parser.add_argument(
-        "--target_num_frames",
+        "--clip_min_frames",
         type=int,
-        default=129,
-        help="Uniformly resample each video to this many frames. Use 129 for HY defaults.",
+        default=125,
+        help="Minimum output frames per split clip. The effective value is rounded up to 4n+1.",
+    )
+    parser.add_argument(
+        "--clip_max_frames",
+        type=int,
+        default=637,
+        help="Maximum output frames per split clip. The effective value is rounded down to 4n+1.",
+    )
+    parser.add_argument(
+        "--split_seed",
+        type=int,
+        default=None,
+        help="Optional random seed for reproducible clip lengths.",
     )
     parser.add_argument(
         "--num_samples",
@@ -87,10 +115,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--view_priority",
         default=",".join(DEFAULT_VIEW_PRIORITY),
-        help=(
-            "Priority used when multiple LU/LD/LL/LR booleans are true. "
-            "HY-WorldPlay's current action loader accepts only one view_action string."
-        ),
+        help="Priority used when multiple LU/LD/LL/LR booleans are true. HY-WorldPlay's current action loader accepts only one view_action string.",
     )
     parser.add_argument(
         "--overwrite",
@@ -126,8 +151,10 @@ def import_hy_preprocess(hy_worldplay_dir: Path):
 
 
 def load_debug_samples(input_dir: Path) -> List[Tuple[Path, int, Dict[str, Any]]]:
+    """Load samples from a debug root or a single debug run directory."""
     samples: List[Tuple[Path, int, Dict[str, Any]]] = []
-    for data_path in sorted(input_dir.glob("*/data.json")):
+    data_paths = [input_dir / "data.json"] if (input_dir / "data.json").exists() else sorted(input_dir.glob("*/data.json"))
+    for data_path in data_paths:
         with data_path.open("r", encoding="utf-8") as f:
             rows = json.load(f)
         if not isinstance(rows, list):
@@ -156,6 +183,12 @@ def require_sample_files(sample_dir: Path, sample: Dict[str, Any]) -> Tuple[Path
 def sample_id(sample_dir: Path, item_idx: int, sample: Dict[str, Any]) -> str:
     video_stem = Path(str(sample.get("videoPath", f"{item_idx:06d}"))).stem
     return f"{sample_dir.name}_{item_idx:03d}_{video_stem}"
+
+
+def sample_clip_id(sample_dir: Path, item_idx: int, sample: Dict[str, Any], clip_spec: ClipSpec) -> str:
+    """Build a stable segment id for a split clip."""
+    base_id = sample_id(sample_dir, item_idx, sample)
+    return f"{base_id}_clip{clip_spec.clip_idx:04d}_f{clip_spec.start_frame:06d}"
 
 
 def make_intrinsic(target_height: int, target_width: int) -> List[List[float]]:
@@ -210,6 +243,99 @@ def get_action_for_source_frame(actions: Sequence[Dict[str, Any]], source_idx: i
     return sanitize_bool_action(actions[clamped_idx])
 
 
+def blank_action() -> Dict[str, bool]:
+    """Return the required no-op action for frame 0 of each clip."""
+    return {key: False for key in ACTION_KEYS}
+
+
+def align_frame_count_up(frame_count: int) -> int:
+    """Return the smallest 4n+1 frame count greater than or equal to frame_count."""
+    remainder = (frame_count - 1) % 4
+    if remainder == 0:
+        return frame_count
+    return frame_count + 4 - remainder
+
+
+def align_frame_count_down(frame_count: int) -> int:
+    """Return the largest 4n+1 frame count less than or equal to frame_count."""
+    return frame_count - ((frame_count - 1) % 4)
+
+
+def choose_clip_frame_count(remaining_advance: int, min_frames: int, max_frames: int, rng: random.Random) -> int:
+    """Choose a random 4n+1 clip length that leaves a valid suffix when possible."""
+    max_advance = max_frames - 1
+    min_advance = min_frames - 1
+    if remaining_advance <= max_advance and remaining_advance < min_advance * 2:
+        return remaining_advance + 1
+
+    candidates = list(range(min_advance, min(max_advance, remaining_advance) + 1, 4))
+    good_candidates = [advance for advance in candidates if can_partition_advance(remaining_advance - advance, min_advance, max_advance)]
+    if can_partition_advance(remaining_advance, min_advance, max_advance) and remaining_advance >= min_advance * 2:
+        good_candidates = [advance for advance in good_candidates if advance < remaining_advance]
+    if not good_candidates:
+        raise ValueError(f"Cannot split remaining {remaining_advance + 1} frames into clips between {min_frames} and {max_frames} frames")
+    return rng.choice(good_candidates) + 1
+
+
+def can_partition_advance(advance: int, min_advance: int, max_advance: int) -> bool:
+    """Return whether an advance length can be composed from valid clip advances."""
+    if advance == 0:
+        return True
+    if advance < min_advance:
+        return False
+    min_parts = math.ceil(advance / max_advance)
+    max_parts = advance // min_advance
+    return min_parts <= max_parts
+
+
+def get_video_frame_count(video_path: Path) -> int:
+    """Return the decoded video's frame count from OpenCV metadata."""
+    import cv2
+
+    cap = cv2.VideoCapture(str(video_path))
+    try:
+        if not cap.isOpened():
+            raise RuntimeError(f"Could not open video: {video_path}")
+        return int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    finally:
+        cap.release()
+
+
+def plan_clip_specs(source_frame_count: int, action_count: int, min_frames: int, max_frames: int, rng: random.Random) -> List[ClipSpec]:
+    """Split one video into overlapping clips whose lengths are 4n+1."""
+    usable_frame_count = min(source_frame_count, action_count)
+    usable_frame_count = align_frame_count_down(usable_frame_count)
+    if usable_frame_count < min_frames:
+        raise ValueError(f"Video has {source_frame_count} frame(s) and {action_count} action(s), but needs at least {min_frames} usable frame(s)")
+
+    specs: List[ClipSpec] = []
+    start_frame = 0
+    remaining_advance = usable_frame_count - 1
+    while remaining_advance > 0:
+        frame_count = choose_clip_frame_count(remaining_advance, min_frames, max_frames, rng)
+        specs.append(ClipSpec(len(specs), start_frame, frame_count, source_frame_count, usable_frame_count))
+        start_frame += frame_count - 1
+        remaining_advance -= frame_count - 1
+    return specs
+
+
+def clip_actions(actions: Sequence[Dict[str, Any]], start_frame: int, frame_count: int) -> List[Dict[str, bool]]:
+    """Return a per-frame action slice with clip-local action 0 forced blank."""
+    clipped = [sanitize_bool_action(action) for action in actions[start_frame : start_frame + frame_count]]
+    clipped[0] = blank_action()
+    return clipped
+
+
+def extract_first_frame_tensor(video_frames):
+    """Return frame 0 from an already decoded clip tensor."""
+    import torch
+
+    first_frame = video_frames[0]
+    if hasattr(first_frame, "detach"):
+        return first_frame.detach().cpu()
+    return torch.as_tensor(first_frame)
+
+
 def build_pose_and_action_dicts(
     actions: Sequence[Dict[str, Any]],
     source_frame_indices: Sequence[int],
@@ -240,13 +366,16 @@ def build_pose_and_action_dicts(
     return pose_dict, action_dict
 
 
-def load_image_tensor(image_path: Path):
+def save_image_tensor(image_path: Path, image_tensor) -> None:
+    """Save an RGB HWC uint8 tensor or array as a JPEG image."""
     import numpy as np
-    import torch
     from PIL import Image
 
-    image = Image.open(image_path).convert("RGB")
-    return torch.from_numpy(np.asarray(image, dtype=np.uint8))
+    if hasattr(image_tensor, "detach"):
+        image_tensor = image_tensor.detach().cpu().numpy()
+    image_array = np.asarray(image_tensor, dtype=np.uint8)
+    image_path.parent.mkdir(parents=True, exist_ok=True)
+    Image.fromarray(image_array).save(image_path, quality=95)
 
 
 def validate_view_priority(raw_priority: str) -> Tuple[str, ...]:
@@ -259,6 +388,19 @@ def validate_view_priority(raw_priority: str) -> Tuple[str, ...]:
     return priority
 
 
+def validate_clip_frame_range(min_frames: int, max_frames: int) -> Tuple[int, int]:
+    """Validate and align the requested random clip frame range."""
+    if min_frames <= 0 or max_frames <= 0:
+        raise ValueError("clip_min_frames and clip_max_frames must be positive")
+    min_frames = align_frame_count_up(min_frames)
+    max_frames = align_frame_count_down(max_frames)
+    if min_frames < 5:
+        raise ValueError("clip_min_frames must allow at least 5 frames after 4n+1 alignment")
+    if max_frames < min_frames:
+        raise ValueError("clip_max_frames must be greater than or equal to clip_min_frames after 4n+1 alignment")
+    return min_frames, max_frames
+
+
 def path_for_json(path: Path) -> str:
     return path.as_posix()
 
@@ -269,11 +411,12 @@ def write_json(path: Path, data: Any) -> None:
         json.dump(data, f, indent=2)
 
 
-def preprocess_sample(
+def preprocess_clip(
     pre,
     sample_dir: Path,
     item_idx: int,
     sample: Dict[str, Any],
+    clip_spec: ClipSpec,
     args: argparse.Namespace,
     view_priority: Sequence[str],
     vae,
@@ -282,22 +425,28 @@ def preprocess_sample(
     byt5_encoders,
 ) -> Dict[str, Any]:
     video_path, image_path = require_sample_files(sample_dir, sample)
-    segment_id = sample_id(sample_dir, item_idx, sample)
+    segment_id = sample_clip_id(sample_dir, item_idx, sample, clip_spec)
     segment_dir = args.output_dir / "latent_dataset_w_action" / segment_id
     segment_dir.mkdir(parents=True, exist_ok=True)
 
-    LOGGER.info("Loading video frames: %s", video_path)
-    video_frames = pre.load_video_segment(str(video_path), 0, 10**12)
-    source_frame_count = int(video_frames.shape[0])
-    video_frames, source_indices = pre.resample_video_frames(
-        video_frames, target_num_frames=args.target_num_frames
+    LOGGER.info(
+        "Loading clip frames: %s start=%s frames=%s",
+        video_path,
+        clip_spec.start_frame,
+        clip_spec.frame_count,
     )
+    video_frames = pre.load_video_segment(str(video_path), clip_spec.start_frame, clip_spec.start_frame + clip_spec.frame_count - 1)
     output_frame_count = int(video_frames.shape[0])
+    if output_frame_count != clip_spec.frame_count:
+        raise ValueError(f"{segment_id} decoded {output_frame_count} frame(s), expected {clip_spec.frame_count}")
+    source_indices = list(range(output_frame_count))
+    clipped_actions = clip_actions(sample["actions"], clip_spec.start_frame, output_frame_count)
 
     LOGGER.info(
-        "Encoding %s: %s source frames -> %s output frames",
+        "Encoding %s: source frames %s-%s -> %s output frames",
         segment_id,
-        source_frame_count,
+        clip_spec.start_frame,
+        clip_spec.start_frame + output_frame_count - 1,
         output_frame_count,
     )
     latent = pre.encode_video_to_latent(
@@ -312,7 +461,9 @@ def preprocess_sample(
     prompt_embeds = pre.encode_prompt(prompt, text_encoders, device=args.device)
     byt5_embeds = pre.encode_byt5_prompt(prompt, byt5_encoders, device=args.device)
 
-    first_frame = load_image_tensor(image_path)
+    first_frame = extract_first_frame_tensor(video_frames)
+    first_frame_path = segment_dir / f"{segment_id}_first_frame.jpg"
+    save_image_tensor(first_frame_path, first_frame)
     image_cond = pre.encode_first_frame_to_latent(
         vae,
         first_frame,
@@ -329,7 +480,7 @@ def preprocess_sample(
     )
 
     pose_dict, action_dict = build_pose_and_action_dicts(
-        sample["actions"],
+        clipped_actions,
         source_indices,
         target_height=args.target_height,
         target_width=args.target_width,
@@ -361,10 +512,16 @@ def preprocess_sample(
         "segment_id": segment_id,
         "source_dir": path_for_json(sample_dir),
         "video_path": path_for_json(video_path),
-        "image_path": path_for_json(image_path),
-        "num_source_frames": source_frame_count,
+        "source_image_path": path_for_json(image_path),
+        "image_path": path_for_json(first_frame_path),
+        "clip_index": clip_spec.clip_idx,
+        "source_start_frame": clip_spec.start_frame,
+        "source_end_frame": clip_spec.start_frame + output_frame_count - 1,
+        "num_source_frames": clip_spec.source_frame_count,
+        "num_usable_source_frames": clip_spec.usable_frame_count,
         "num_output_frames": output_frame_count,
         "num_source_actions": len(sample["actions"]),
+        "num_output_actions": len(clipped_actions),
         "target_height": args.target_height,
         "target_width": args.target_width,
         "latent_path": path_for_json(latent_path),
@@ -378,6 +535,8 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     args = parse_args()
     view_priority = validate_view_priority(args.view_priority)
+    clip_min_frames, clip_max_frames = validate_clip_frame_range(args.clip_min_frames, args.clip_max_frames)
+    rng = random.Random(args.split_seed)
 
     samples = load_debug_samples(args.input_dir)
     if args.num_samples is not None:
@@ -385,20 +544,37 @@ def main() -> None:
     if not samples:
         raise SystemExit(f"No debug samples found under {args.input_dir}")
 
+    planned_samples: List[Tuple[Path, int, Dict[str, Any], Path, Path, List[ClipSpec]]] = []
     for sample_dir, item_idx, sample in samples:
-        require_sample_files(sample_dir, sample)
+        video_path, image_path = require_sample_files(sample_dir, sample)
+        source_frame_count = get_video_frame_count(video_path)
+        clip_specs = plan_clip_specs(source_frame_count, len(sample["actions"]), clip_min_frames, clip_max_frames, rng)
+        planned_samples.append((sample_dir, item_idx, sample, video_path, image_path, clip_specs))
 
     if args.dry_run:
-        LOGGER.info("Found %s sample(s)", len(samples))
-        for sample_dir, item_idx, sample in samples:
-            video_path, image_path = require_sample_files(sample_dir, sample)
+        LOGGER.info("Found %s sample(s), planned %s split clip(s)", len(samples), sum(len(clip_specs) for *_, clip_specs in planned_samples))
+        LOGGER.info("Clip frame range after 4n+1 alignment: %s-%s", clip_min_frames, clip_max_frames)
+        for sample_dir, item_idx, sample, video_path, image_path, clip_specs in planned_samples:
             LOGGER.info(
-                "%s: video=%s image=%s actions=%s",
+                "%s: video=%s image=%s frames=%s usable_frames=%s actions=%s clips=%s",
                 sample_id(sample_dir, item_idx, sample),
                 video_path,
                 image_path,
+                clip_specs[0].source_frame_count,
+                clip_specs[0].usable_frame_count,
                 len(sample["actions"]),
+                len(clip_specs),
             )
+            for clip_spec in clip_specs[:10]:
+                LOGGER.info(
+                    "  clip %s: start=%s end=%s frames=%s",
+                    clip_spec.clip_idx,
+                    clip_spec.start_frame,
+                    clip_spec.start_frame + clip_spec.frame_count - 1,
+                    clip_spec.frame_count,
+                )
+            if len(clip_specs) > 10:
+                LOGGER.info("  ... %s more clip(s)", len(clip_specs) - 10)
         return
 
     if args.overwrite and args.output_dir.exists():
@@ -414,25 +590,27 @@ def main() -> None:
 
     index: List[Dict[str, Any]] = []
     output_json_path = args.output_dir / args.output_json
-    for sample_dir, item_idx, sample in samples:
-        try:
-            row = preprocess_sample(
-                pre,
-                sample_dir,
-                item_idx,
-                sample,
-                args,
-                view_priority,
-                vae,
-                text_encoders,
-                vision_encoders,
-                byt5_encoders,
-            )
-            index.append(row)
-            write_json(output_json_path, index)
-        except Exception:
-            LOGGER.exception("Failed to preprocess %s item %s", sample_dir, item_idx)
-            raise
+    for sample_dir, item_idx, sample, _, _, clip_specs in planned_samples:
+        for clip_spec in clip_specs:
+            try:
+                row = preprocess_clip(
+                    pre,
+                    sample_dir,
+                    item_idx,
+                    sample,
+                    clip_spec,
+                    args,
+                    view_priority,
+                    vae,
+                    text_encoders,
+                    vision_encoders,
+                    byt5_encoders,
+                )
+                index.append(row)
+                write_json(output_json_path, index)
+            except Exception:
+                LOGGER.exception("Failed to preprocess %s item %s clip %s", sample_dir, item_idx, clip_spec.clip_idx)
+                raise
 
     write_json(output_json_path, index)
     LOGGER.info("Wrote %s sample(s) to %s", len(index), output_json_path)

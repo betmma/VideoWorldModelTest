@@ -277,16 +277,19 @@ Input instance:
 
 Output per segment:
 
-1. Load video frames and optionally resample to a training frame count such as 129.
-2. Encode video with `encode_video_to_latent`.
-3. Encode prompt with `encode_prompt`.
-4. Encode ByT5 with `encode_byt5_prompt`.
-5. Encode `imagePath` or frame 0 with `encode_first_frame_to_latent` and `encode_first_frame`.
-6. Write `.pt` containing all required tensor keys.
-7. Write dense pose JSON with identity `w2c` and fake intrinsics.
-8. Write dense action JSON with one entry per output video frame.
-9. Write `dataset_index.json` pointing to the three artifacts.
-10. Patch the loader so `action_path` is used without relying on the `latent_dataset_w_action` substring.
+1. Split each source video into overlapping clips whose lengths satisfy `frames % 4 == 1`, with clip boundaries at multiples of 4 frames.
+2. Load each clip frame range without temporal resampling.
+3. Force each clip-local `actions[0]` to all false, because it has no preceding frame transition.
+4. Extract the clip's first decoded frame as that segment's image condition and copy the prompt.
+5. Encode video with `encode_video_to_latent`.
+6. Encode prompt with `encode_prompt`.
+7. Encode ByT5 with `encode_byt5_prompt`.
+8. Encode the extracted first frame with `encode_first_frame_to_latent` and `encode_first_frame`.
+9. Write `.pt` containing all required tensor keys.
+10. Write dense pose JSON with identity `w2c` and fake intrinsics.
+11. Write dense action JSON with one entry per output video frame.
+12. Write `dataset_index.json` pointing to the three artifacts.
+13. Patch the loader so `action_path` is used without relying on the `latent_dataset_w_action` substring.
 
 For `view_action`, choose one of two policies:
 
