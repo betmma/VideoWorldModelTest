@@ -30,6 +30,7 @@ import importlib.util
 import json
 import logging
 import math
+import os
 import random
 import shutil
 import sys
@@ -50,6 +51,30 @@ class ClipSpec(NamedTuple):
     frame_count: int
     source_frame_count: int
     usable_frame_count: int
+
+
+class ParallelContext(NamedTuple):
+    """torchrun process information for clip-level sharding."""
+
+    enabled: bool
+    rank: int
+    local_rank: int
+    world_size: int
+    initialized: bool
+
+    @property
+    def is_main(self) -> bool:
+        return self.rank == 0
+
+
+class PlannedClip(NamedTuple):
+    """One clip preprocessing task with a stable global order."""
+
+    task_idx: int
+    sample_dir: Path
+    item_idx: int
+    sample: Dict[str, Any]
+    clip_spec: ClipSpec
 
 
 def parse_args() -> argparse.Namespace:
@@ -123,11 +148,106 @@ def parse_args() -> argparse.Namespace:
         help="Remove output_dir before preprocessing.",
     )
     parser.add_argument(
+        "--parallel",
+        "--distributed",
+        dest="distributed",
+        action="store_true",
+        help="Shard clips across torchrun processes. This is also enabled automatically when WORLD_SIZE > 1.",
+    )
+    parser.add_argument(
+        "--dist_backend",
+        default="gloo",
+        help="torch.distributed backend used only for process barriers in parallel preprocessing.",
+    )
+    parser.add_argument(
         "--dry_run",
         action="store_true",
         help="Validate inputs and print the samples that would be processed.",
     )
     return parser.parse_args()
+
+
+def configure_logging() -> None:
+    rank = os.environ.get("RANK")
+    rank_prefix = f"[rank {rank}] " if rank is not None else ""
+    logging.basicConfig(level=logging.INFO, format=f"%(levelname)s: {rank_prefix}%(message)s")
+
+
+def env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except ValueError as exc:
+        raise ValueError(f"Environment variable {name} must be an integer, got {raw!r}") from exc
+
+
+def init_parallel_context(args: argparse.Namespace) -> ParallelContext:
+    """Initialize torch.distributed when torchrun is driving multiple processes."""
+    world_size = env_int("WORLD_SIZE", 1)
+    rank = env_int("RANK", 0)
+    local_rank = env_int("LOCAL_RANK", rank)
+    enabled = bool(args.distributed or world_size > 1)
+
+    if not enabled:
+        return ParallelContext(False, 0, 0, 1, False)
+    if world_size < 1:
+        raise ValueError(f"WORLD_SIZE must be positive, got {world_size}")
+    if not 0 <= rank < world_size:
+        raise ValueError(f"RANK must be in [0, {world_size}), got {rank}")
+
+    initialized = False
+    if world_size > 1:
+        import torch.distributed as dist
+
+        if not dist.is_initialized():
+            dist.init_process_group(backend=args.dist_backend)
+            initialized = True
+
+    return ParallelContext(True, rank, local_rank, world_size, initialized)
+
+
+def parallel_barrier(parallel: ParallelContext) -> None:
+    if not parallel.enabled or parallel.world_size <= 1:
+        return
+    import torch.distributed as dist
+
+    if dist.is_available() and dist.is_initialized():
+        dist.barrier()
+
+
+def finalize_parallel_context(parallel: ParallelContext) -> None:
+    if not parallel.initialized:
+        return
+    import torch.distributed as dist
+
+    if dist.is_available() and dist.is_initialized():
+        dist.destroy_process_group()
+
+
+def resolve_process_device(device: str, parallel: ParallelContext) -> str:
+    """Map --device cuda to cuda:<LOCAL_RANK> under torchrun."""
+    if parallel.enabled and parallel.world_size > 1 and device == "cuda":
+        resolved_device = f"cuda:{parallel.local_rank}"
+        try:
+            import torch
+
+            torch.cuda.set_device(parallel.local_rank)
+        except Exception:
+            LOGGER.warning(
+                "Could not set CUDA device to local rank %s; continuing with %s",
+                parallel.local_rank,
+                resolved_device,
+            )
+        return resolved_device
+
+    if parallel.enabled and parallel.world_size > 1 and device.startswith("cuda:"):
+        LOGGER.warning(
+            "Using explicit --device %s on every rank. Use --device cuda to map ranks to cuda:<LOCAL_RANK>.",
+            device,
+        )
+    return device
 
 
 def import_hy_preprocess(hy_worldplay_dir: Path):
@@ -411,6 +531,53 @@ def write_json(path: Path, data: Any) -> None:
         json.dump(data, f, indent=2)
 
 
+def flatten_planned_clips(
+    planned_samples: Sequence[Tuple[Path, int, Dict[str, Any], Path, Path, List[ClipSpec]]]
+) -> List[PlannedClip]:
+    tasks: List[PlannedClip] = []
+    for sample_dir, item_idx, sample, _, _, clip_specs in planned_samples:
+        for clip_spec in clip_specs:
+            tasks.append(
+                PlannedClip(
+                    task_idx=len(tasks),
+                    sample_dir=sample_dir,
+                    item_idx=item_idx,
+                    sample=sample,
+                    clip_spec=clip_spec,
+                )
+            )
+    return tasks
+
+
+def shard_tasks(tasks: Sequence[PlannedClip], parallel: ParallelContext) -> List[PlannedClip]:
+    if not parallel.enabled or parallel.world_size <= 1:
+        return list(tasks)
+    return [task for task in tasks if task.task_idx % parallel.world_size == parallel.rank]
+
+
+def rank_index_path(output_json_path: Path, rank: int) -> Path:
+    return output_json_path.with_name(f".{output_json_path.name}.rank{rank:05d}.json")
+
+
+def merge_rank_indexes(output_json_path: Path, world_size: int) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for rank in range(world_size):
+        path = rank_index_path(output_json_path, rank)
+        if not path.exists():
+            raise FileNotFoundError(f"Missing rank index file: {path}")
+        with path.open("r", encoding="utf-8") as f:
+            rank_rows = json.load(f)
+        if not isinstance(rank_rows, list):
+            raise ValueError(f"Rank index file must contain a JSON list: {path}")
+        rows.extend(rank_rows)
+
+    rows.sort(key=lambda row: int(row["task_index"]))
+    for row in rows:
+        row.pop("task_index", None)
+    write_json(output_json_path, rows)
+    return rows
+
+
 def preprocess_clip(
     pre,
     sample_dir: Path,
@@ -531,9 +698,51 @@ def preprocess_clip(
     }
 
 
+def preprocess_task(
+    pre,
+    task: PlannedClip,
+    args: argparse.Namespace,
+    view_priority: Sequence[str],
+    vae,
+    text_encoders,
+    vision_encoders,
+    byt5_encoders,
+) -> Dict[str, Any]:
+    row = preprocess_clip(
+        pre,
+        task.sample_dir,
+        task.item_idx,
+        task.sample,
+        task.clip_spec,
+        args,
+        view_priority,
+        vae,
+        text_encoders,
+        vision_encoders,
+        byt5_encoders,
+    )
+    row["task_index"] = task.task_idx
+    return row
+
+
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    configure_logging()
     args = parse_args()
+    parallel = init_parallel_context(args)
+    try:
+        args.device = resolve_process_device(args.device, parallel)
+        if parallel.enabled and parallel.world_size > 1 and args.split_seed is None:
+            LOGGER.warning(
+                "Parallel preprocessing needs identical clip planning on every rank; using --split_seed 0."
+            )
+            args.split_seed = 0
+
+        run_main(args, parallel)
+    finally:
+        finalize_parallel_context(parallel)
+
+
+def run_main(args: argparse.Namespace, parallel: ParallelContext) -> None:
     view_priority = validate_view_priority(args.view_priority)
     clip_min_frames, clip_max_frames = validate_clip_frame_range(args.clip_min_frames, args.clip_max_frames)
     rng = random.Random(args.split_seed)
@@ -551,38 +760,47 @@ def main() -> None:
         clip_specs = plan_clip_specs(source_frame_count, len(sample["actions"]), clip_min_frames, clip_max_frames, rng)
         planned_samples.append((sample_dir, item_idx, sample, video_path, image_path, clip_specs))
 
+    tasks = flatten_planned_clips(planned_samples)
+    rank_tasks = shard_tasks(tasks, parallel)
+
     if args.dry_run:
-        LOGGER.info("Found %s sample(s), planned %s split clip(s)", len(samples), sum(len(clip_specs) for *_, clip_specs in planned_samples))
-        LOGGER.info("Clip frame range after 4n+1 alignment: %s-%s", clip_min_frames, clip_max_frames)
-        for sample_dir, item_idx, sample, video_path, image_path, clip_specs in planned_samples:
-            LOGGER.info(
-                "%s: video=%s image=%s frames=%s usable_frames=%s actions=%s clips=%s",
-                sample_id(sample_dir, item_idx, sample),
-                video_path,
-                image_path,
-                clip_specs[0].source_frame_count,
-                clip_specs[0].usable_frame_count,
-                len(sample["actions"]),
-                len(clip_specs),
-            )
-            for clip_spec in clip_specs[:10]:
+        if parallel.is_main:
+            LOGGER.info("Found %s sample(s), planned %s split clip(s)", len(samples), len(tasks))
+            LOGGER.info("Clip frame range after 4n+1 alignment: %s-%s", clip_min_frames, clip_max_frames)
+            if parallel.enabled:
+                LOGGER.info("Parallel plan: rank %s/%s would process %s clip(s)", parallel.rank, parallel.world_size, len(rank_tasks))
+            for sample_dir, item_idx, sample, video_path, image_path, clip_specs in planned_samples:
                 LOGGER.info(
-                    "  clip %s: start=%s end=%s frames=%s",
-                    clip_spec.clip_idx,
-                    clip_spec.start_frame,
-                    clip_spec.start_frame + clip_spec.frame_count - 1,
-                    clip_spec.frame_count,
+                    "%s: video=%s image=%s frames=%s usable_frames=%s actions=%s clips=%s",
+                    sample_id(sample_dir, item_idx, sample),
+                    video_path,
+                    image_path,
+                    clip_specs[0].source_frame_count,
+                    clip_specs[0].usable_frame_count,
+                    len(sample["actions"]),
+                    len(clip_specs),
                 )
-            if len(clip_specs) > 10:
-                LOGGER.info("  ... %s more clip(s)", len(clip_specs) - 10)
+                for clip_spec in clip_specs[:10]:
+                    LOGGER.info(
+                        "  clip %s: start=%s end=%s frames=%s",
+                        clip_spec.clip_idx,
+                        clip_spec.start_frame,
+                        clip_spec.start_frame + clip_spec.frame_count - 1,
+                        clip_spec.frame_count,
+                    )
+                if len(clip_specs) > 10:
+                    LOGGER.info("  ... %s more clip(s)", len(clip_specs) - 10)
+        elif parallel.enabled:
+            LOGGER.info("Parallel plan: rank %s/%s would process %s clip(s)", parallel.rank, parallel.world_size, len(rank_tasks))
         return
 
-    if args.overwrite and args.output_dir.exists():
+    if args.overwrite and parallel.is_main and args.output_dir.exists():
         shutil.rmtree(args.output_dir)
+    parallel_barrier(parallel)
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
     pre = import_hy_preprocess(args.hy_worldplay_dir)
-    LOGGER.info("Loading HY-WorldPlay encoders from %s", args.model_path)
+    LOGGER.info("Loading HY-WorldPlay encoders from %s on %s", args.model_path, args.device)
     vae = pre.load_vae_model(str(args.model_path), device=args.device)
     text_encoders = pre.load_text_encoder(str(args.model_path), device=args.device)
     vision_encoders = pre.load_vision_encoder(str(args.model_path), device=args.device)
@@ -590,30 +808,49 @@ def main() -> None:
 
     index: List[Dict[str, Any]] = []
     output_json_path = args.output_dir / args.output_json
-    for sample_dir, item_idx, sample, _, _, clip_specs in planned_samples:
-        for clip_spec in clip_specs:
-            try:
-                row = preprocess_clip(
-                    pre,
-                    sample_dir,
-                    item_idx,
-                    sample,
-                    clip_spec,
-                    args,
-                    view_priority,
-                    vae,
-                    text_encoders,
-                    vision_encoders,
-                    byt5_encoders,
-                )
-                index.append(row)
-                write_json(output_json_path, index)
-            except Exception:
-                LOGGER.exception("Failed to preprocess %s item %s clip %s", sample_dir, item_idx, clip_spec.clip_idx)
-                raise
+    rank_output_json_path = rank_index_path(output_json_path, parallel.rank) if parallel.enabled else output_json_path
+    LOGGER.info(
+        "Processing %s of %s planned clip(s)",
+        len(rank_tasks),
+        len(tasks),
+    )
 
-    write_json(output_json_path, index)
-    LOGGER.info("Wrote %s sample(s) to %s", len(index), output_json_path)
+    for task in rank_tasks:
+        try:
+            row = preprocess_task(
+                pre,
+                task,
+                args,
+                view_priority,
+                vae,
+                text_encoders,
+                vision_encoders,
+                byt5_encoders,
+            )
+            index.append(row)
+            write_json(rank_output_json_path, index)
+        except Exception:
+            LOGGER.exception(
+                "Failed to preprocess %s item %s clip %s",
+                task.sample_dir,
+                task.item_idx,
+                task.clip_spec.clip_idx,
+            )
+            raise
+
+    write_json(rank_output_json_path, index)
+    LOGGER.info("Wrote %s rank-local sample(s) to %s", len(index), rank_output_json_path)
+
+    parallel_barrier(parallel)
+    if parallel.enabled and parallel.is_main:
+        merged_index = merge_rank_indexes(output_json_path, parallel.world_size)
+        LOGGER.info("Merged %s sample(s) to %s", len(merged_index), output_json_path)
+    elif not parallel.enabled:
+        for row in index:
+            row.pop("task_index", None)
+        write_json(output_json_path, index)
+        LOGGER.info("Wrote %s sample(s) to %s", len(index), output_json_path)
+    parallel_barrier(parallel)
 
 
 if __name__ == "__main__":
