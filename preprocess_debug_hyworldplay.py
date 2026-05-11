@@ -521,8 +521,14 @@ def validate_clip_frame_range(min_frames: int, max_frames: int) -> Tuple[int, in
     return min_frames, max_frames
 
 
-def path_for_json(path: Path) -> str:
-    return path.as_posix()
+def path_for_json(path: Path, base_dir: Path) -> str:
+    """Return a POSIX path that HY-WorldPlay can open from its repo root."""
+    resolved_path = path.resolve()
+    resolved_base = base_dir.resolve()
+    try:
+        return resolved_path.relative_to(resolved_base).as_posix()
+    except ValueError:
+        return Path(os.path.relpath(resolved_path, resolved_base)).as_posix()
 
 
 def write_json(path: Path, data: Any) -> None:
@@ -662,6 +668,7 @@ def preprocess_clip(
 
     import torch
 
+    json_path_base = args.hy_worldplay_dir
     torch.save(
         {
             "latent": latent,
@@ -677,10 +684,10 @@ def preprocess_clip(
 
     return {
         "segment_id": segment_id,
-        "source_dir": path_for_json(sample_dir),
-        "video_path": path_for_json(video_path),
-        "source_image_path": path_for_json(image_path),
-        "image_path": path_for_json(first_frame_path),
+        "source_dir": path_for_json(sample_dir, json_path_base),
+        "video_path": path_for_json(video_path, json_path_base),
+        "source_image_path": path_for_json(image_path, json_path_base),
+        "image_path": path_for_json(first_frame_path, json_path_base),
         "clip_index": clip_spec.clip_idx,
         "source_start_frame": clip_spec.start_frame,
         "source_end_frame": clip_spec.start_frame + output_frame_count - 1,
@@ -691,9 +698,9 @@ def preprocess_clip(
         "num_output_actions": len(clipped_actions),
         "target_height": args.target_height,
         "target_width": args.target_width,
-        "latent_path": path_for_json(latent_path),
-        "pose_path": path_for_json(pose_path),
-        "action_path": path_for_json(action_path),
+        "latent_path": path_for_json(latent_path, json_path_base),
+        "pose_path": path_for_json(pose_path, json_path_base),
+        "action_path": path_for_json(action_path, json_path_base),
         "prompt": prompt,
     }
 
@@ -728,6 +735,7 @@ def preprocess_task(
 def main() -> None:
     configure_logging()
     args = parse_args()
+    args.hy_worldplay_dir = args.hy_worldplay_dir.resolve()
     parallel = init_parallel_context(args)
     try:
         args.device = resolve_process_device(args.device, parallel)
