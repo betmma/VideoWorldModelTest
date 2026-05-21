@@ -176,7 +176,7 @@ class SudokuBase(GameBase):
     variantsPath = "sudokus"
     width = 960
     height = 540
-    moveInterval = 1
+    moveInterval = 4
     box_rows = 3
     box_cols = 3
     require_unique_solution = True

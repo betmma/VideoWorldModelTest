@@ -33,7 +33,6 @@ class PipePair:
 class FlappyBirdBase(GameBase):
     name = "Flappy Bird"
     variantsPath = "flappyBirds"
-    moveInterval = 2
 
     def __init__(self, headless: bool = False) -> None:
         self.ground_height = 72
