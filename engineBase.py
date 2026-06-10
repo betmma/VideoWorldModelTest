@@ -5,7 +5,7 @@ import inspect
 import os
 import random
 from abc import ABC, abstractmethod
-from typing import Callable, Optional, TypedDict
+from typing import Any, Callable, Optional, TypedDict
 
 import numpy as np
 
@@ -123,6 +123,27 @@ class GameBase(ABC):
         perfectly steady interval to imitate human reaction times.
         If the game's action happens at key pressed down instead of holding key, auto action should only execute actions at multiples of moveInterval frames. Check frame_index % moveInterval so resets inside a long recording do not shift the dataset cadence. Still auto action should not perform action at a steady moveInterval.
         """
+
+    def frameToState(self, frame_rgb: np.ndarray) -> Any:
+        """
+        Convert a rendered RGB frame into a comparable evaluation state.
+        Games that do not support state recovery should leave this default unchanged.
+        """
+        return None
+
+    def expectedFrameToState(self) -> Any:
+        """
+        Return the expected result of frameToState() for the current rendered state.
+        This is only for testing frameToState() on frames rendered by the real game.
+        """
+        return None
+
+    def statesMatch(self, gt_state: Any, pred_state: Any, last_gt_state: Any, last_pred_state: Any) -> bool:
+        """
+        Return whether two recovered states count as the same evaluation state.
+        Games may use previous recovered states when exact equality is too strict for transitions.
+        """
+        return gt_state == pred_state
 
 
 # ---------------------------------------------------------------------------

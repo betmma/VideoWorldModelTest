@@ -24,9 +24,9 @@ class KeystrokeDisplay(GameBase):
     def _make_theme(self) -> dict[str, tuple[int, int, int]]:
         """Choose one simple visual theme for the current run."""
         themes = [
-            {"bg_top": (22, 28, 34), "bg_bottom": (68, 54, 46), "key": (222, 226, 228), "edge": (132, 142, 150), "text": (31, 36, 42), "lit": (255, 203, 72), "lit_edge": (201, 132, 30), "lit_text": (42, 30, 14), "shadow": (9, 12, 15)},
-            {"bg_top": (18, 43, 54), "bg_bottom": (31, 75, 56), "key": (235, 239, 232), "edge": (124, 151, 134), "text": (22, 44, 38), "lit": (106, 215, 246), "lit_edge": (32, 129, 173), "lit_text": (5, 35, 54), "shadow": (7, 18, 22)},
-            {"bg_top": (47, 31, 55), "bg_bottom": (72, 46, 52), "key": (232, 224, 216), "edge": (153, 128, 139), "text": (43, 32, 39), "lit": (122, 238, 153), "lit_edge": (42, 156, 84), "lit_text": (11, 49, 28), "shadow": (15, 10, 18)},
+            {"bg_top": (22, 28, 34), "bg_bottom": (68, 54, 46), "key": (222, 226, 228), "edge": (132, 142, 150), "text": (31, 36, 42), "lit": (255, 203, 72), "lit_name": "gold yellow", "lit_edge": (201, 132, 30), "lit_text": (42, 30, 14), "shadow": (9, 12, 15)},
+            {"bg_top": (18, 43, 54), "bg_bottom": (31, 75, 56), "key": (235, 239, 232), "edge": (124, 151, 134), "text": (22, 44, 38), "lit": (106, 215, 246), "lit_name": "bright cyan", "lit_edge": (32, 129, 173), "lit_text": (5, 35, 54), "shadow": (7, 18, 22)},
+            {"bg_top": (47, 31, 55), "bg_bottom": (72, 46, 52), "key": (232, 224, 216), "edge": (153, 128, 139), "text": (43, 32, 39), "lit": (122, 238, 153), "lit_name": "mint green", "lit_edge": (42, 156, 84), "lit_text": (11, 49, 28), "shadow": (15, 10, 18)},
         ]
         return random.choice(themes)
 
@@ -107,9 +107,40 @@ class KeystrokeDisplay(GameBase):
         text = font.render(label, True, text_color)
         self.screen.blit(text, text.get_rect(center=key_rect.center))
 
+    def frameToState(self, frame_rgb) -> str | None:
+        """Recover the lit key by sampling one quiet pixel inside each keycap."""
+        samples = []
+        for key, rect in self._key_layout():
+            x = rect.left + rect.width // 4
+            y = rect.top + rect.height // 4
+            color = tuple(int(value) for value in frame_rgb[y, x])
+            samples.append((key, color))
+
+        color_groups = []
+        for key, color in samples:
+            for group in color_groups:
+                if self._colors_match(color, group["color"]):
+                    group["keys"].append(key)
+                    break
+            else:
+                color_groups.append({"color": color, "keys": [key]})
+
+        for group in color_groups:
+            if len(group["keys"]) == 1:
+                return group["keys"][0]
+        return None
+
+    def _colors_match(self, a: tuple[int, int, int], b: tuple[int, int, int]) -> bool:
+        """Return whether two sampled RGB colors should count as the same color."""
+        return sum(abs(a[index] - b[index]) for index in range(3)) <= 30
+
+    def expectedFrameToState(self) -> str | None:
+        """Return the expected parsed key for the current rendered frame."""
+        return self.current_key
+
     def getPrompt(self) -> str:
         """Return the prompt describing the key display rule."""
-        return "This is Keystroke Display. The screen shows eight keycaps: W, A, S, D, Up Arrow, Left Arrow, Down Arrow, and Right Arrow. When an action key is held, only the matching keycap lights up. When no action key is held, all keycaps are unlit."
+        return f"This is Keystroke Display. The screen shows eight pale keycaps: W, A, S, D, Up Arrow, Left Arrow, Down Arrow, and Right Arrow. When an action key is held, only the matching keycap changes to {self.theme['lit_name']}. When no action key is held, all keycaps stay pale and unlit."
 
     def getAutoAction(self, frame_index: int) -> ActionState:
         """Alternate between blank waits and natural single-key holds."""

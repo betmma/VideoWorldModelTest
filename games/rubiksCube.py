@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+from typing import Any
 from ursina import *
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -12,6 +13,23 @@ from ursinaBase import UrsinaGameBase
 class RubiksCube(UrsinaGameBase):
     name = "RubiksCube"
     variantsPath = "RubiksCubes"
+    state_color_names = ("right", "left", "top", "bottom", "back", "front")
+    state_color_rgb = {
+        "right": (255, 0, 127),
+        "left": (255, 127, 0),
+        "top": (255, 255, 255),
+        "bottom": (255, 255, 0),
+        "back": (0, 128, 255),
+        "front": (0, 255, 0),
+    }
+    state_faces = (
+        {"name": "right", "normal": (1, 0, 0), "axis": 0, "value": 1, "row_axis": 1, "rows": (1, 0, -1), "col_axis": 2, "cols": (-1, 0, 1), "corners": ((427, 241), (595, 73), (620, 325), (488, 466)), "preview": False},
+        {"name": "left", "normal": (-1, 0, 0), "axis": 0, "value": -1, "row_axis": 1, "rows": (1, 0, -1), "col_axis": 2, "cols": (1, 0, -1), "corners": ((754, 69), (796, 99), (798, 144), (754, 122)), "preview": True},
+        {"name": "top", "normal": (0, 1, 0), "axis": 1, "value": 1, "row_axis": 2, "rows": (-1, 0, 1), "col_axis": 0, "cols": (-1, 0, 1), "corners": ((198, 180), (427, 241), (595, 73), (376, 49)), "preview": False},
+        {"name": "bottom", "normal": (0, -1, 0), "axis": 1, "value": -1, "row_axis": 2, "rows": (1, 0, -1), "col_axis": 0, "cols": (1, 0, -1), "corners": ((710, 144), (754, 122), (798, 144), (754, 163)), "preview": True},
+        {"name": "back", "normal": (0, 0, 1), "axis": 2, "value": 1, "row_axis": 1, "rows": (1, 0, -1), "col_axis": 0, "cols": (1, 0, -1), "corners": ((716, 99), (754, 69), (754, 122), (710, 144)), "preview": True},
+        {"name": "front", "normal": (0, 0, -1), "axis": 2, "value": -1, "row_axis": 1, "rows": (1, 0, -1), "col_axis": 0, "cols": (-1, 0, 1), "corners": ((198, 180), (427, 241), (488, 466), (289, 383)), "preview": False},
+    )
 
     def __init__(self, headless: bool = False) -> None:
         super().__init__(headless=headless)
@@ -46,6 +64,41 @@ class RubiksCube(UrsinaGameBase):
         self.preview_label: Text | None = None
 
         self.setup_secondary_camera()
+
+    def _vec_tuple(self, value) -> tuple[int, int, int]:
+        """Round a Vec3-like value to an integer tuple."""
+        return (round(value.x), round(value.y), round(value.z))
+
+    def _rotate_tuple(self, value: tuple[int, int, int], axis: str, direction: int) -> tuple[int, int, int]:
+        """Rotate an integer vector by a quarter turn using Ursina's rotation signs."""
+        x, y, z = value
+        if axis == 'x':
+            return (x, -z, y) if direction == 1 else (x, z, -y)
+        if axis == 'y':
+            return (z, y, -x) if direction == 1 else (-z, y, x)
+        return (y, -x, z) if direction == 1 else (-y, x, z)
+
+    def _rotate_sticker_state(self, cubes: list[Entity], axis: str, direction: int) -> None:
+        """Rotate logical sticker normals for the cubies in a completed turn."""
+        for cubie in cubes:
+            cubie.stickers = {self._rotate_tuple(normal, axis, direction): label for normal, label in cubie.stickers.items()}
+
+    def _make_cubie_stickers(self, pos) -> dict[tuple[int, int, int], str]:
+        """Return the outward sticker labels for a new cubie position."""
+        stickers = {}
+        if pos.x == 1:
+            stickers[(1, 0, 0)] = "right"
+        if pos.x == -1:
+            stickers[(-1, 0, 0)] = "left"
+        if pos.y == 1:
+            stickers[(0, 1, 0)] = "top"
+        if pos.y == -1:
+            stickers[(0, -1, 0)] = "bottom"
+        if pos.z == 1:
+            stickers[(0, 0, 1)] = "back"
+        if pos.z == -1:
+            stickers[(0, 0, -1)] = "front"
+        return stickers
 
     def setup_secondary_camera(self) -> None:
         if self.preview_cam is not None:
@@ -146,6 +199,7 @@ class RubiksCube(UrsinaGameBase):
                         e_neg.look_at(-direction, Vec3.up)
 
                     cubie = Entity(model=cubie_builder.combine(), position=pos, texture='white_cube')
+                    cubie.stickers = self._make_cubie_stickers(pos)
                     self.cubes.append(cubie)
                     destroy(cubie_builder)
 
@@ -162,6 +216,7 @@ class RubiksCube(UrsinaGameBase):
         self.anim_dir = 1
         self.anim_frames = 0
         self.anim_max_frames = 6  # Higher number = slower animation
+        self.rotating_cubes = []
         
         # Auto action state
         self.auto_timer = 0
@@ -295,6 +350,116 @@ class RubiksCube(UrsinaGameBase):
 
     # ----------------- HELPER LOGIC -----------------
 
+    def _sample_point(self, face: dict[str, Any], row: int, col: int, width: int, height: int) -> tuple[int, int]:
+        """Return the scaled sample point for one sticker."""
+        coords = (1 / 6, 1 / 2, 5 / 6)
+        u = coords[col]
+        v = coords[row]
+        p00, p01, p11, p10 = face["corners"]
+        x = (1 - u) * (1 - v) * p00[0] + u * (1 - v) * p01[0] + u * v * p11[0] + (1 - u) * v * p10[0]
+        y = (1 - u) * (1 - v) * p00[1] + u * (1 - v) * p01[1] + u * v * p11[1] + (1 - u) * v * p10[1]
+        return round(x * width / 854), round(y * height / 480)
+
+    def _state_position(self, face: dict[str, Any], row: int, col: int) -> tuple[int, int, int]:
+        """Return the cubie position for a face sample."""
+        position = [0, 0, 0]
+        position[face["axis"]] = face["value"]
+        position[face["row_axis"]] = face["rows"][row]
+        position[face["col_axis"]] = face["cols"][col]
+        return tuple(position)
+
+    def _state_samples(self, width: int, height: int) -> list[dict[str, Any]]:
+        """Return all sticker samples in state order."""
+        samples = []
+        for face in self.state_faces:
+            for row in range(3):
+                for col in range(3):
+                    samples.append({"face": face["name"], "normal": face["normal"], "position": self._state_position(face, row, col), "row": row, "col": col, "point": self._sample_point(face, row, col, width, height), "preview": face["preview"]})
+        return samples
+
+    def _pixel_color_name(self, pixel) -> str:
+        """Return the closest cube color label for a pixel."""
+        r, g, b = int(pixel[0]), int(pixel[1]), int(pixel[2])
+        return min(self.state_color_names, key=lambda name: (r - self.state_color_rgb[name][0]) ** 2 + (g - self.state_color_rgb[name][1]) ** 2 + (b - self.state_color_rgb[name][2]) ** 2)
+
+    def _sample_raw_color(self, frame_rgb, sample: dict[str, Any]) -> tuple[int, int, int]:
+        """Return the exact RGB color at one sticker sample point."""
+        x, y = sample["point"]
+        pixel = frame_rgb[y, x]
+        return (int(pixel[0]), int(pixel[1]), int(pixel[2]))
+
+    def _raw_color_distance(self, a: tuple[int, int, int], b: tuple[int, int, int]) -> int:
+        """Return total RGB channel distance between two sampled colors."""
+        return sum(abs(a[index] - b[index]) for index in range(3))
+
+    def _raw_colors_match(self, a: tuple[int, int, int], b: tuple[int, int, int]) -> bool:
+        """Return whether two sampled RGB colors should count as the same color."""
+        threshold = 10 if self._pixel_color_name(a) == "bottom" and self._pixel_color_name(b) == "bottom" else 30
+        return self._raw_color_distance(a, b) <= threshold
+
+    def _raw_color_groups(self, raw_colors: list[tuple[int, int, int]]) -> list[dict[str, Any]]:
+        """Group sampled colors while allowing small RGB differences."""
+        color_groups = []
+        for index, raw_color in enumerate(raw_colors):
+            for group in color_groups:
+                if self._raw_colors_match(raw_color, group["color"]):
+                    group["indices"].append(index)
+                    break
+            else:
+                color_groups.append({"color": raw_color, "indices": [index]})
+        return color_groups
+
+    def frameToState(self, frame_rgb) -> dict[str, Any]:
+        """Recover sticker colors and cursor position from one rendered RGB frame."""
+        height, width = frame_rgb.shape[:2]
+        samples = self._state_samples(width, height)
+        raw_colors = [self._sample_raw_color(frame_rgb, sample) for sample in samples]
+        color_groups = self._raw_color_groups(raw_colors)
+        cursor_group = next((group for group in color_groups if len(group["indices"]) == 1), None)
+        hidden_sticker_group = next((group for group in color_groups if len(group["indices"]) == 8), None)
+        cursor_index = cursor_group["indices"][0] if cursor_group is not None else None
+        sticker_colors = list(raw_colors)
+        if cursor_index is not None and hidden_sticker_group is not None:
+            sticker_colors[cursor_index] = hidden_sticker_group["color"]
+        stickers = tuple(self._pixel_color_name(raw_color) for raw_color in sticker_colors)
+        cursor = None
+        if cursor_index is not None:
+            sample = samples[cursor_index]
+            cursor = (sample["face"], sample["row"], sample["col"])
+        return {"stickers": stickers, "cursor": cursor}
+
+    def expectedFrameToState(self) -> dict[str, Any]:
+        """Return the expected frameToState result from the logical cube state."""
+        stickers = []
+        for face in self.state_faces:
+            for row in range(3):
+                for col in range(3):
+                    position = self._state_position(face, row, col)
+                    cubie = next(cubie for cubie in self.cubes if self._vec_tuple(cubie.position) == position)
+                    stickers.append(cubie.stickers[face["normal"]])
+        return {"stickers": tuple(stickers), "cursor": self._expected_cursor_state(), "animating": self.animating}
+
+    def _expected_cursor_state(self) -> tuple[str, int, int] | None:
+        """Return the cursor state in the same face-row-column format as frameToState."""
+        normal = self._vec_tuple(self.cur_normal)
+        position = self._vec_tuple(self.cur_pos)
+        for face in self.state_faces:
+            if face["normal"] != normal:
+                continue
+            row = face["rows"].index(position[face["row_axis"]])
+            col = face["cols"].index(position[face["col_axis"]])
+            return (face["name"], row, col)
+        return None
+
+    def statesMatch(self, gt_state: Any, pred_state: Any, last_gt_state: Any, last_pred_state: Any) -> bool:
+        """Compare parsed Rubik's Cube states and skip in-progress rotation frames."""
+        if isinstance(gt_state, dict) and gt_state.get("animating"):
+            return True
+        if not isinstance(gt_state, dict) or not isinstance(pred_state, dict):
+            return gt_state == pred_state
+        stickers_match = gt_state.get("stickers") == pred_state.get("stickers")
+        return stickers_match and gt_state.get("cursor") == pred_state.get("cursor")
+
     def update_cursor_visuals(self):
         if self.cursor:
             self.cursor.position = self.cur_pos + self.cur_normal * 0.52
@@ -316,11 +481,18 @@ class RubiksCube(UrsinaGameBase):
         self.anim_axis = axis
         self.anim_dir = direction
         self.anim_frames = 0
+        self.rotating_cubes = []
         
         for e in self.cubes:
-            if axis == 'x' and round(e.x) == round(slice_val): e.world_parent = self.rotation_helper
-            elif axis == 'y' and round(e.y) == round(slice_val): e.world_parent = self.rotation_helper
-            elif axis == 'z' and round(e.z) == round(slice_val): e.world_parent = self.rotation_helper
+            if axis == 'x' and round(e.x) == round(slice_val):
+                e.world_parent = self.rotation_helper
+                self.rotating_cubes.append(e)
+            elif axis == 'y' and round(e.y) == round(slice_val):
+                e.world_parent = self.rotation_helper
+                self.rotating_cubes.append(e)
+            elif axis == 'z' and round(e.z) == round(slice_val):
+                e.world_parent = self.rotation_helper
+                self.rotating_cubes.append(e)
 
     def reset_layer_rotation(self):
         for e in self.cubes:
@@ -329,6 +501,8 @@ class RubiksCube(UrsinaGameBase):
             e.rotation = Vec3(round(e.rotation_x/90)*90, round(e.rotation_y/90)*90, round(e.rotation_z/90)*90)
             
         self.rotation_helper.rotation = (0, 0, 0)
+        self._rotate_sticker_state(self.rotating_cubes, self.anim_axis, self.anim_dir)
+        self.rotating_cubes = []
         self.animating = False
         self.moves_made += 1
 
@@ -338,6 +512,7 @@ class RubiksCube(UrsinaGameBase):
         self.anim_axis = axis
         self.anim_dir = direction
         self.anim_frames = 0
+        self.rotating_cubes = list(self.cubes)
 
         for e in self.cubes:
             e.world_parent = self.rotation_helper
@@ -353,6 +528,8 @@ class RubiksCube(UrsinaGameBase):
             
         self.cursor.world_parent = scene
         self.rotation_helper.rotation = (0, 0, 0)
+        self._rotate_sticker_state(self.rotating_cubes, axis, direction)
+        self.rotating_cubes = []
 
         self.cur_pos = self.rotate_point3d(self.cur_pos, axis, direction * 90)
         self.cur_normal = self.rotate_point3d(self.cur_normal, axis, direction * 90)
