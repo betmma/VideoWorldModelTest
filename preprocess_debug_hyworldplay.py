@@ -227,14 +227,35 @@ def finalize_parallel_context(parallel: ParallelContext) -> None:
 
 
 def resolve_process_device(device: str, parallel: ParallelContext) -> str:
-    """Map --device cuda to cuda:<LOCAL_RANK> under torchrun."""
+    """Map --device cuda to a visible CUDA device under torchrun.
+
+    If torchrun launches more processes than visible GPUs, local ranks wrap around
+    the available device count. This lets preprocessing run multiple workers per
+    GPU, which is useful when a single worker under-utilizes a large GPU.
+    """
     if parallel.enabled and parallel.world_size > 1 and device == "cuda":
-        resolved_device = f"cuda:{parallel.local_rank}"
         try:
             import torch
 
-            torch.cuda.set_device(parallel.local_rank)
+            cuda_device_count = torch.cuda.device_count()
+            if cuda_device_count <= 0:
+                LOGGER.warning("No CUDA devices found; continuing with --device cuda")
+                return device
+
+            device_idx = parallel.local_rank % cuda_device_count
+            resolved_device = f"cuda:{device_idx}"
+            torch.cuda.set_device(device_idx)
+            if parallel.local_rank >= cuda_device_count:
+                LOGGER.info(
+                    "Mapping local rank %s to %s; %s visible CUDA device(s), so multiple ranks share each GPU.",
+                    parallel.local_rank,
+                    resolved_device,
+                    cuda_device_count,
+                )
+            else:
+                LOGGER.info("Mapping local rank %s to %s", parallel.local_rank, resolved_device)
         except Exception:
+            resolved_device = f"cuda:{parallel.local_rank}"
             LOGGER.warning(
                 "Could not set CUDA device to local rank %s; continuing with %s",
                 parallel.local_rank,
