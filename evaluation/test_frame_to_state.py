@@ -51,7 +51,16 @@ def actionToDict(action: ActionState) -> dict[str, bool]:
     return {key: bool(value) for key, value in action.items()}
 
 
-def testFrameToState(game_cls: Type[GameBase], max_frames: int, max_failures: int) -> dict[str, Any]:
+def jitterFrame(frame_rgb: np.ndarray, jitter: float, rng: np.random.Generator) -> np.ndarray:
+    """Apply deterministic per-channel RGB jitter to a frame."""
+    if jitter <= 0:
+        return frame_rgb
+    amount = round(255 * jitter)
+    noise = rng.integers(-amount, amount + 1, size=frame_rgb.shape, dtype=np.int16)
+    return np.clip(frame_rgb.astype(np.int16) + noise, 0, 255).astype(np.uint8)
+
+
+def testFrameToState(game_cls: Type[GameBase], max_frames: int, max_failures: int, jitter: float, jitter_seed: int) -> dict[str, Any]:
     """Run autoplay frames and compare frameToState(frame) with expectedFrameToState()."""
     if not hasFrameState(game_cls):
         raise RuntimeError(f"{game_cls.__name__} does not override frameToState")
@@ -59,6 +68,7 @@ def testFrameToState(game_cls: Type[GameBase], max_frames: int, max_failures: in
         raise RuntimeError(f"{game_cls.__name__} does not override expectedFrameToState")
 
     game = game_cls(headless=True)
+    rng = np.random.default_rng(jitter_seed)
     frames_tested = 0
     matches = 0
     failures = []
@@ -69,7 +79,7 @@ def testFrameToState(game_cls: Type[GameBase], max_frames: int, max_failures: in
         """Check one rendered frame."""
         nonlocal frames_tested, matches, last_expected_state, last_actual_state
         expected_state = game.expectedFrameToState()
-        actual_state = game.frameToState(frame_rgb)
+        actual_state = game.frameToState(jitterFrame(frame_rgb, jitter, rng))
         matched = game.statesMatch(expected_state, actual_state, last_expected_state, last_actual_state)
         if matched:
             matches += 1
@@ -87,7 +97,7 @@ def testFrameToState(game_cls: Type[GameBase], max_frames: int, max_failures: in
     if frames_tested == 0:
         raise RuntimeError("no frames were tested")
 
-    return {"game": game_cls.__name__, "framesTested": frames_tested, "matches": matches, "accuracy": matches / frames_tested, "failures": failures}
+    return {"game": game_cls.__name__, "jitter": jitter, "jitterSeed": jitter_seed, "framesTested": frames_tested, "matches": matches, "accuracy": matches / frames_tested, "failures": failures}
 
 
 def main() -> None:
@@ -96,11 +106,13 @@ def main() -> None:
     parser.add_argument("--game-class", required=True, help="Game module path; module.path:ClassName is also accepted")
     parser.add_argument("--max-frames", type=int, default=120)
     parser.add_argument("--max-failures", type=int, default=20)
+    parser.add_argument("--jitter", type=float, default=0.0, help="Per-channel RGB jitter as a fraction of 255; 0.01 means about +-3.")
+    parser.add_argument("--jitter-seed", type=int, default=0)
     parser.add_argument("--output-json", default=None)
     args = parser.parse_args()
 
     game_cls = parseGameClass(args.game_class)
-    result = testFrameToState(game_cls, args.max_frames, args.max_failures)
+    result = testFrameToState(game_cls, args.max_frames, args.max_failures, args.jitter, args.jitter_seed)
     text = json.dumps(result, ensure_ascii=False, indent=2)
     print(text)
     if args.output_json is not None:

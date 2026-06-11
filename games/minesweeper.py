@@ -1,7 +1,7 @@
 import os
 import sys
 import random
-import pygame
+import numpy as np, pygame
 from abc import ABC, abstractmethod
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -550,6 +550,265 @@ class MinesweeperBase(GameBase):
             f"{fast_open_text}"
             "When game ends, press A or left arrow key to restart."
         )
+
+    def _board_offsets(self, grid_w: int, grid_h: int, frame_w: int, frame_h: int) -> tuple[int, int]:
+        """Return the centered board offset for a candidate grid size."""
+        return (frame_w - grid_w * self.tile_size) // 2, (frame_h - grid_h * self.tile_size) // 2
+
+    def _rgb_distance(self, pixel, color: tuple[int, int, int]) -> int:
+        """Return total RGB channel distance from a target color."""
+        return sum(abs(int(pixel[index]) - color[index]) for index in range(3))
+
+    def _brightness(self, pixel) -> int:
+        """Return simple average brightness for one RGB pixel."""
+        return (int(pixel[0]) + int(pixel[1]) + int(pixel[2])) // 3
+
+    def _is_board_gray(self, pixel) -> bool:
+        """Return whether a pixel looks like Minesweeper board material."""
+        r, g, b = int(pixel[0]), int(pixel[1]), int(pixel[2])
+        return 85 <= self._brightness(pixel) <= 255 and max(r, g, b) - min(r, g, b) <= 45
+
+    def _is_background_gray(self, pixel) -> bool:
+        """Return whether a pixel looks like the dark page background."""
+        r, g, b = int(pixel[0]), int(pixel[1]), int(pixel[2])
+        return self._brightness(pixel) < 80 and max(r, g, b) - min(r, g, b) <= 25
+
+    def _bright_board_mask(self, frame_rgb):
+        """Return a mask for pixels bright enough to belong to the board."""
+        return frame_rgb.astype("int16").mean(axis=2) > 80
+
+    def _largest_projection_run(self, counts, threshold: int) -> tuple[int, int]:
+        """Return the longest contiguous run whose projection count is above threshold."""
+        best_start = 0
+        best_end = 0
+        start = None
+        for index, count in enumerate(counts):
+            if count > threshold and start is None:
+                start = index
+            if start is not None and (count <= threshold or index == len(counts) - 1):
+                end = index if count <= threshold else index + 1
+                if end - start > best_end - best_start:
+                    best_start = start
+                    best_end = end
+                start = None
+        return best_start, best_end
+
+    def _infer_board_shape(self, frame_rgb) -> tuple[int, int, int, int]:
+        """Infer grid width, height, and offset from one frame."""
+        bright = self._bright_board_mask(frame_rgb)
+        top, bottom = self._largest_projection_run(bright.sum(axis=1), self.tile_size * 2)
+        left, right = self._largest_projection_run(bright[top:bottom, :].sum(axis=0), self.tile_size * 2)
+        board_w = right - left
+        board_h = bottom - top
+        grid_w = round(board_w / self.tile_size)
+        grid_h = round(board_h / self.tile_size)
+        offset_x = left + (board_w - grid_w * self.tile_size) // 2
+        offset_y = top + (board_h - grid_h * self.tile_size) // 2
+        return grid_w, grid_h, offset_x, offset_y
+
+    def _has_red_flag(self, frame_rgb, x: int, y: int) -> bool:
+        """Return whether a hidden cell contains a red flag shape."""
+        red_pixels = 0
+        for py in range(y + 6, y + self.tile_size - 6, 2):
+            for px in range(x + 6, x + self.tile_size - 6, 2):
+                pixel = frame_rgb[py, px]
+                if int(pixel[0]) > 180 and int(pixel[1]) < 90 and int(pixel[2]) < 90:
+                    red_pixels += 1
+        return red_pixels >= 5
+
+    def _cell_is_hidden(self, frame_rgb, x: int, y: int) -> bool:
+        """Return whether a cell looks unrevealed from bevel pixels."""
+        inner = frame_rgb[y + 8:y + self.tile_size - 8, x + 8:x + self.tile_size - 8]
+        if np.median(inner.astype(np.int16).mean(axis=2)) < 190:
+            return True
+        top = frame_rgb[y + 4, x + self.tile_size // 2]
+        left = frame_rgb[y + self.tile_size // 2, x + 4]
+        bottom = frame_rgb[y + self.tile_size - 4, x + self.tile_size // 2]
+        right = frame_rgb[y + self.tile_size // 2, x + self.tile_size - 4]
+        bright_edges = int(self._brightness(top) > 220) + int(self._brightness(left) > 220)
+        dark_edges = int(self._brightness(bottom) < 145) + int(self._brightness(right) < 145)
+        return bright_edges + dark_edges >= 3
+
+    def _cell_inner_crop(self, frame_rgb, x: int, y: int):
+        """Return the inner cell crop used for clue shape parsing."""
+        return frame_rgb[y + 6:y + self.tile_size - 6, x + 6:x + self.tile_size - 6]
+
+    def _crop_background_color(self, crop):
+        """Return the magic-wand seed color from crop border pixels."""
+        border_pixels = np.concatenate((crop[0, :, :], crop[-1, :, :], crop[:, 0, :], crop[:, -1, :]))
+        return np.median(border_pixels, axis=0)
+
+    def _cell_foreground_mask(self, crop):
+        """Remove connected background pixels and return the remaining foreground mask."""
+        background_color = self._crop_background_color(crop)
+        color_distance = np.abs(crop.astype(np.int16) - background_color).sum(axis=2)
+        background_like = color_distance <= 90
+        background = np.zeros(background_like.shape, dtype=bool)
+        rows, cols = background_like.shape
+        stack = [(0, col) for col in range(cols) if background_like[0, col]]
+        stack += [(rows - 1, col) for col in range(cols) if background_like[rows - 1, col]]
+        stack += [(row, 0) for row in range(rows) if background_like[row, 0]]
+        stack += [(row, cols - 1) for row in range(rows) if background_like[row, cols - 1]]
+        while stack:
+            row, col = stack.pop()
+            if background[row, col]:
+                continue
+            background[row, col] = True
+            for next_row, next_col in ((row - 1, col), (row + 1, col), (row, col - 1), (row, col + 1)):
+                if 0 <= next_row < rows and 0 <= next_col < cols and background_like[next_row, next_col] and not background[next_row, next_col]:
+                    stack.append((next_row, next_col))
+        return ~background
+
+    def _parse_revealed_clue(self, frame_rgb, x: int, y: int) -> int:
+        """Recover a revealed cell clue from foreground colors after background removal."""
+        crop = self._cell_inner_crop(frame_rgb, x, y)
+        mask = self._cell_foreground_mask(crop)
+        if mask.sum() < 8:
+            return 0
+        clue_scores = {clue: 0 for clue in range(1, 9)}
+        for pixel in crop[mask]:
+            clue = min(clue_scores, key=lambda value: self._rgb_distance(pixel, self.colors[value]))
+            clue_scores[clue] += 1
+        return max(clue_scores, key=clue_scores.get)
+
+    def _parse_frame_cell(self, frame_rgb, x: int, y: int) -> tuple[str, int | None]:
+        """Recover one cell state from a frame."""
+        if self._cell_is_hidden(frame_rgb, x, y):
+            if self._has_red_flag(frame_rgb, x, y):
+                return ("flagged", None)
+            return ("unrevealed", None)
+        return ("revealed", self._parse_revealed_clue(frame_rgb, x, y))
+
+    def _looks_cursor_yellow(self, pixels) -> np.ndarray:
+        """Return a mask for pixels that look like the yellow cursor outline."""
+        values = pixels.astype(np.int16)
+        return (values[:, 0] > 90) & (values[:, 1] > 90) & (values[:, 2] < 90) & (values[:, 0] - values[:, 2] > 80) & (values[:, 1] - values[:, 2] > 80)
+
+    def _cursor_score(self, frame_rgb, x: int, y: int) -> int:
+        """Count cursor-yellow pixels around one cell border."""
+        top = frame_rgb[y:y + 4, x:x + self.tile_size]
+        bottom = frame_rgb[y + self.tile_size - 4:y + self.tile_size, x:x + self.tile_size]
+        left = frame_rgb[y:y + self.tile_size, x:x + 4]
+        right = frame_rgb[y:y + self.tile_size, x + self.tile_size - 4:x + self.tile_size]
+        border = np.concatenate((top.reshape(-1, 3), bottom.reshape(-1, 3), left.reshape(-1, 3), right.reshape(-1, 3)))
+        return int(self._looks_cursor_yellow(border).sum())
+
+    def _find_cursor(self, frame_rgb, grid_w: int, grid_h: int, offset_x: int, offset_y: int) -> tuple[int, int] | None:
+        """Recover the cursor cell from the yellow outline."""
+        best_score = 0
+        best_cell = None
+        for r in range(grid_h):
+            for c in range(grid_w):
+                x = offset_x + c * self.tile_size
+                y = offset_y + r * self.tile_size
+                score = self._cursor_score(frame_rgb, x, y)
+                if score > best_score:
+                    best_score = score
+                    best_cell = (r, c)
+        return best_cell if best_score >= self.tile_size else None
+
+    def frameToState(self, frame_rgb) -> dict:
+        """Recover the visible basic Minesweeper board state from one RGB frame."""
+        grid_w, grid_h, offset_x, offset_y = self._infer_board_shape(frame_rgb)
+        rows = []
+        for r in range(grid_h):
+            row = []
+            for c in range(grid_w):
+                x = offset_x + c * self.tile_size
+                y = offset_y + r * self.tile_size
+                row.append(self._parse_frame_cell(frame_rgb, x, y))
+            rows.append(tuple(row))
+        return {"width": grid_w, "height": grid_h, "cursor": self._find_cursor(frame_rgb, grid_w, grid_h, offset_x, offset_y), "cells": tuple(rows)}
+
+    def expectedFrameToState(self) -> dict:
+        """Return the expected basic Minesweeper frame state from game state."""
+        rows = []
+        for r in range(self.grid_h):
+            row = []
+            for c in range(self.grid_w):
+                cell = self.grid[r][c]
+                if cell.flagged:
+                    row.append(("flagged", None))
+                elif cell.revealed:
+                    row.append(("revealed", cell.clue))
+                else:
+                    row.append(("unrevealed", None))
+            rows.append(tuple(row))
+        return {"width": self.grid_w, "height": self.grid_h, "cursor": (self.cursor_r, self.cursor_c), "cells": tuple(rows)}
+
+    def _state_cells(self, state: dict) -> tuple[tuple[tuple[str, int | None], ...], ...]:
+        """Return the cell matrix from a recovered Minesweeper state."""
+        return state["cells"]
+
+    def _state_dimensions_match(self, gt_state: dict, pred_state: dict) -> bool:
+        """Return whether two recovered boards have the same dimensions."""
+        return gt_state["width"] == pred_state["width"] and gt_state["height"] == pred_state["height"]
+
+    def _state_cursors_match(self, gt_state: dict, pred_state: dict) -> bool:
+        """Return whether two recovered boards have the same cursor position."""
+        return gt_state["cursor"] == pred_state["cursor"]
+
+    def _cell_statuses_match(self, gt_state: dict, pred_state: dict) -> bool:
+        """Return whether every cell has the same revealed, flagged, or unrevealed status."""
+        gt_cells = self._state_cells(gt_state)
+        pred_cells = self._state_cells(pred_state)
+        for r in range(gt_state["height"]):
+            for c in range(gt_state["width"]):
+                if gt_cells[r][c][0] != pred_cells[r][c][0]:
+                    return False
+        return True
+
+    def _state_adjacent(self, state: dict, r: int, c: int) -> list[tuple[int, int]]:
+        """Return basic Minesweeper adjacent cells for a recovered state."""
+        adjacent = []
+        for dr in [-1, 0, 1]:
+            for dc in [-1, 0, 1]:
+                if dr == 0 and dc == 0:
+                    continue
+                nr, nc = r + dr, c + dc
+                if 0 <= nr < state["height"] and 0 <= nc < state["width"]:
+                    adjacent.append((nr, nc))
+        return adjacent
+
+    def _revealed_clues_are_possible(self, state: dict) -> bool:
+        """Return whether every revealed clue is compatible with nearby hidden and flagged cells."""
+        cells = self._state_cells(state)
+        for r in range(state["height"]):
+            for c in range(state["width"]):
+                status, clue = cells[r][c]
+                if status != "revealed":
+                    continue
+                flags = sum(1 for nr, nc in self._state_adjacent(state, r, c) if cells[nr][nc][0] == "flagged")
+                unrevealed = sum(1 for nr, nc in self._state_adjacent(state, r, c) if cells[nr][nc][0] == "unrevealed")
+                if flags > clue or flags + unrevealed < clue:
+                    return False
+        return True
+
+    def _revealed_clues_are_stable(self, pred_state: dict, last_pred_state: dict | None) -> bool:
+        """Return whether already revealed predicted clues keep the same content."""
+        if last_pred_state is None or not self._state_dimensions_match(pred_state, last_pred_state):
+            return True
+        pred_cells = self._state_cells(pred_state)
+        last_cells = self._state_cells(last_pred_state)
+        for r in range(pred_state["height"]):
+            for c in range(pred_state["width"]):
+                if pred_cells[r][c][0] == "revealed" and last_cells[r][c][0] == "revealed" and pred_cells[r][c][1] != last_cells[r][c][1]:
+                    return False
+        return True
+
+    def statesMatch(self, gt_state, pred_state, last_gt_state, last_pred_state) -> bool:
+        """Compare basic Minesweeper states with status equality and loose clue consistency."""
+        if not isinstance(gt_state, dict) or not isinstance(pred_state, dict):
+            return gt_state == pred_state
+        if not self._state_dimensions_match(gt_state, pred_state):
+            return False
+        if not self._state_cursors_match(gt_state, pred_state):
+            return False
+        if not self._cell_statuses_match(gt_state, pred_state):
+            return False
+        if not self._revealed_clues_are_possible(pred_state):
+            return False
+        return self._revealed_clues_are_stable(pred_state, last_pred_state)
         
 
     def deduce_step(self) -> list[tuple[int, int, str]]:
