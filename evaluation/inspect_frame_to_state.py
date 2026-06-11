@@ -72,11 +72,11 @@ def inspectVideoStates(game_cls: Type[GameBase], gt_video_path: str, pred_video_
             if gt_frame is None or pred_frame is None:
                 break
 
-            pred_frame = resizeLike(pred_frame, gt_frame)
+            pred_pixel_frame = resizeLike(pred_frame, gt_frame)
             gt_state = game.frameToState(gt_frame)
             pred_state = game.frameToState(pred_frame)
             match = game.statesMatch(gt_state, pred_state, last_gt_state, last_pred_state)
-            rows.append({"frame": start_frame + len(rows), "time": formatTime(start_frame + len(rows), fps), "gtState": stateToJsonValue(gt_state), "predState": stateToJsonValue(pred_state), "match": match, "pixelSimilarity": pixelSimilarity(gt_frame, pred_frame)})
+            rows.append({"frame": start_frame + len(rows), "time": formatTime(start_frame + len(rows), fps), "gtState": stateToJsonValue(gt_state), "predState": stateToJsonValue(pred_state), "match": match, "pixelSimilarity": pixelSimilarity(gt_frame, pred_pixel_frame)})
             last_gt_state = gt_state
             last_pred_state = pred_state
     finally:

@@ -86,8 +86,8 @@ def evaluateVideos(game_cls: Type[GameBase], gt_video_path: str, pred_video_path
             if gt_frame is None or pred_frame is None:
                 break
 
-            pred_frame = resizeLike(pred_frame, gt_frame)
-            pixel_total += pixelSimilarity(gt_frame, pred_frame)
+            pred_pixel_frame = resizeLike(pred_frame, gt_frame)
+            pixel_total += pixelSimilarity(gt_frame, pred_pixel_frame)
 
             if use_state:
                 gt_state = game.frameToState(gt_frame)

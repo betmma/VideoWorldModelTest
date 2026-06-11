@@ -127,6 +127,7 @@ class MinesweeperBase(GameBase):
         pygame.font.init()
         self.font = pygame.font.SysFont("consolas", 24, bold=True)
         self.large_font = pygame.font.SysFont("consolas", 42, bold=True)
+        self._clue_template_cache = {}
         
         self.colors = {
             1: (0, 0, 255),
@@ -634,42 +635,93 @@ class MinesweeperBase(GameBase):
         return frame_rgb[y + 6:y + self.tile_size - 6, x + 6:x + self.tile_size - 6]
 
     def _crop_background_color(self, crop):
-        """Return the magic-wand seed color from crop border pixels."""
+        """Return the revealed-cell background color from crop border pixels."""
         border_pixels = np.concatenate((crop[0, :, :], crop[-1, :, :], crop[:, 0, :], crop[:, -1, :]))
         return np.median(border_pixels, axis=0)
 
-    def _cell_foreground_mask(self, crop):
-        """Remove connected background pixels and return the remaining foreground mask."""
+    def _most_distant_crop_rgb(self, crop):
+        """Return a representative RGB from pixels most distant from cell background."""
         background_color = self._crop_background_color(crop)
         color_distance = np.abs(crop.astype(np.int16) - background_color).sum(axis=2)
-        background_like = color_distance <= 90
-        background = np.zeros(background_like.shape, dtype=bool)
-        rows, cols = background_like.shape
-        stack = [(0, col) for col in range(cols) if background_like[0, col]]
-        stack += [(rows - 1, col) for col in range(cols) if background_like[rows - 1, col]]
-        stack += [(row, 0) for row in range(rows) if background_like[row, 0]]
-        stack += [(row, cols - 1) for row in range(rows) if background_like[row, cols - 1]]
-        while stack:
-            row, col = stack.pop()
-            if background[row, col]:
-                continue
-            background[row, col] = True
-            for next_row, next_col in ((row - 1, col), (row + 1, col), (row, col - 1), (row, col + 1)):
-                if 0 <= next_row < rows and 0 <= next_col < cols and background_like[next_row, next_col] and not background[next_row, next_col]:
-                    stack.append((next_row, next_col))
-        return ~background
+        flat_crop = crop.reshape(-1, 3)
+        flat_distance = color_distance.reshape(-1)
+        cutoff = flat_distance.max() * 0.75
+        return np.median(flat_crop[flat_distance >= cutoff], axis=0), int(flat_distance.max())
+
+    def _crop_digit_mask(self, crop):
+        """Return a binary digit mask from pixels farthest from cell background."""
+        background_color = self._crop_background_color(crop)
+        color_distance = np.abs(crop.astype(np.int16) - background_color).sum(axis=2)
+        max_distance = int(color_distance.max())
+        if max_distance < 90:
+            return None, max_distance
+        return color_distance >= max_distance * 0.45, max_distance
+
+    def _clue_template_mask(self, clue: int) -> np.ndarray:
+        """Return the rendered digit mask for one clue value."""
+        if clue not in self._clue_template_cache:
+            surface = pygame.Surface((self.tile_size, self.tile_size), pygame.SRCALPHA)
+            text = self.get_clue_font(clue).render(self.format_clue(clue), True, (255, 255, 255))
+            surface.blit(text, text.get_rect(center=(self.tile_size // 2, self.tile_size // 2)))
+            alpha = pygame.surfarray.array_alpha(surface).T
+            self._clue_template_cache[clue] = alpha[6:self.tile_size - 6, 6:self.tile_size - 6] > 0
+        return self._clue_template_cache[clue]
+
+    def _shift_mask(self, mask: np.ndarray, dr: int, dc: int) -> np.ndarray:
+        """Return a mask shifted without wrapping."""
+        shifted = np.zeros_like(mask)
+        src_r0 = max(0, -dr)
+        src_r1 = mask.shape[0] - max(0, dr)
+        src_c0 = max(0, -dc)
+        src_c1 = mask.shape[1] - max(0, dc)
+        dst_r0 = max(0, dr)
+        dst_r1 = mask.shape[0] - max(0, -dr)
+        dst_c0 = max(0, dc)
+        dst_c1 = mask.shape[1] - max(0, -dc)
+        shifted[dst_r0:dst_r1, dst_c0:dst_c1] = mask[src_r0:src_r1, src_c0:src_c1]
+        return shifted
+
+    def _template_shape_score(self, digit_mask: np.ndarray, template_mask: np.ndarray) -> float:
+        """Return the best shifted IoU score between recovered and template masks."""
+        best_score = 0.0
+        for dr in range(-2, 3):
+            for dc in range(-2, 3):
+                shifted = self._shift_mask(template_mask, dr, dc)
+                intersection = np.logical_and(digit_mask, shifted).sum()
+                union = np.logical_or(digit_mask, shifted).sum()
+                score = intersection / union
+                if score > best_score:
+                    best_score = score
+        return best_score
+
+    def _clue_color_candidates(self, pixel) -> tuple[int, ...]:
+        """Return clue values compatible with one representative RGB."""
+        r, g, b = int(pixel[0]), int(pixel[1]), int(pixel[2])
+        if g > r + 35 and b > r + 35 and abs(g - b) < 90:
+            return (6,)
+        if r > g + 35 and r > b + 35:
+            return (3, 5)
+        if g > r + 35 and g > b + 20:
+            return (2,)
+        if b > r + 35 and b > g + 20:
+            return (1, 4)
+        if max(r, g, b) - min(r, g, b) < 70:
+            return (7, 8)
+        return tuple(range(1, 9))
 
     def _parse_revealed_clue(self, frame_rgb, x: int, y: int) -> int:
-        """Recover a revealed cell clue from foreground colors after background removal."""
+        """Recover a revealed cell clue by matching digit shape, with weak color tie-break."""
         crop = self._cell_inner_crop(frame_rgb, x, y)
-        mask = self._cell_foreground_mask(crop)
-        if mask.sum() < 8:
+        digit_mask, distance = self._crop_digit_mask(crop)
+        if digit_mask is None:
             return 0
-        clue_scores = {clue: 0 for clue in range(1, 9)}
-        for pixel in crop[mask]:
-            clue = min(clue_scores, key=lambda value: self._rgb_distance(pixel, self.colors[value]))
-            clue_scores[clue] += 1
-        return max(clue_scores, key=clue_scores.get)
+        pixel, distance = self._most_distant_crop_rgb(crop)
+        scores = {}
+        for clue in self._clue_color_candidates(pixel):
+            shape_score = self._template_shape_score(digit_mask, self._clue_template_mask(clue))
+            color_score = 1.0 - self._rgb_distance(pixel, self.colors[clue]) / 765.0
+            scores[clue] = shape_score + color_score * 0.05
+        return max(scores, key=scores.get)
 
     def _parse_frame_cell(self, frame_rgb, x: int, y: int) -> tuple[str, int | None]:
         """Recover one cell state from a frame."""
