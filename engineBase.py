@@ -119,8 +119,7 @@ class GameBase(ABC):
     def getAutoAction(self, frame_index: int) -> ActionState:
         """
         Implement a logical, somewhat randomised auto-play agent.
-        Called every frame with the runner's global frame index. Must have internal state and should not act at a
-        perfectly steady interval to imitate human reaction times.
+        Called every frame with the runner's global frame index. Must have internal state and should not act at a perfectly steady interval to imitate human reaction times.
         If the game's action happens at key pressed down instead of holding key, auto action should only execute actions at multiples of moveInterval frames. Check frame_index % moveInterval so resets inside a long recording do not shift the dataset cadence. Still auto action should not perform action at a steady moveInterval.
         """
 

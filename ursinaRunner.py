@@ -103,6 +103,7 @@ class _UrsinaBaseRunner(BaseRunner):
                 if not self.running:
                     break
 
+                self.frame_index += 1
                 action = self._next_action()
                 ended_this_frame = self.game.update(action)
                 if ended_this_frame:
@@ -113,8 +114,6 @@ class _UrsinaBaseRunner(BaseRunner):
                 self._emit_rendered_frame(action, ended_this_frame)
                 if self.running:
                     self._tick()
-
-                self.frame_index += 1
         finally:
             self._quit()
         return self.rendered_frame_index
