@@ -1,17 +1,6 @@
 from __future__ import annotations
 
 import io, os, random, sys, requests, pygame
-import socket
-
-# This forces the socket layer to only return IPv4 addresses
-def allowed_gai_family():
-    return socket.AF_INET
-
-def patch_requests_ipv4():
-    import urllib3.util.connection as conn
-    conn.allowed_gai_family = allowed_gai_family
-
-patch_requests_ipv4()
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -154,17 +143,18 @@ class ImagePieceGameBase(GameBase):
         super().__init__(headless=headless)
 
     def get_random_image(self, width: int | None = None, height: int | None = None) -> pygame.Surface:
-        """Download and return a random Picsum image as a pygame surface."""
+        """Download and return a random LoremFlickr image as a pygame surface."""
         if width is None:
             width = self.width
         if height is None:
             height = self.height
         random_token = random.randint(0, 1_000_000_000)
-        image_url = f"https://picsum.photos/{width}/{height}?random={random_token}"
+        image_url = f"https://loremflickr.com/{width}/{height}?random={random_token}"
         self.image_url = image_url
         response = requests.get(image_url, timeout=20, headers={'User-Agent': 'Mozilla/5.0'})
-        image_bytes = response.content
-        image = pygame.image.load(io.BytesIO(image_bytes), image_url).convert()
+        response.raise_for_status()
+        self.image_url = response.url
+        image = pygame.image.load(io.BytesIO(response.content), self.image_url).convert()
         return pygame.transform.smoothscale(image, (width, height))
 
     def get_random_pattern_image(self, width: int | None = None, height: int | None = None) -> pygame.Surface:
