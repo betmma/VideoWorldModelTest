@@ -30,7 +30,7 @@ import cv2, requests
 #
 API_KEY_PATH = "api_key.txt"
 API_KEY = ""
-MODEL_NAME = "veo_3_1-landscape"#"grok-video-3-15s"
+MODEL_NAME = "grok-video-3-15s"#"veo_3_1-landscape"#
 BASE_URL = "https://jyapi.ai-wx.cn/v1"
 OUTPUT_ROOT = os.path.join("evaluation", "output")
 

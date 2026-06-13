@@ -1,5 +1,8 @@
 import math, os, random, sys, pygame
 
+import cv2
+import numpy as np
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from pygameBase import ActionState, GameBase
@@ -181,6 +184,112 @@ class SimpleMoveBase(GameBase):
         pygame.draw.polygon(self.screen, self.theme["object"], inner)
         pygame.draw.line(self.screen, self.theme["object_light"], (x - radius * 0.35, y - radius * 0.2), (x + radius * 0.25, y - radius * 0.45), radius // 8)
         pygame.draw.circle(self.screen, self.theme["object_light"], (round(x + radius * 0.18), round(y + radius * 0.16)), radius // 6)
+
+    def frameToState(self, frame_rgb: np.ndarray) -> dict[str, float | int | None]:
+        """Recover the grid size and visible object position from pixels."""
+        center = self._recover_object_center(frame_rgb)
+        grid = self._recover_grid_geometry(frame_rgb)
+        if center is None or grid is None:
+            return {"rows": None, "cols": None, "row": None, "col": None}
+
+        center_x, center_y = center
+        rows, cols, tile_size, offset_x, offset_y = grid
+        row = (center_y - offset_y) / tile_size - 0.5
+        col = (center_x - offset_x) / tile_size - 0.5
+        return {"rows": rows, "cols": cols, "row": round(row, 2), "col": round(col, 2)}
+
+    def expectedFrameToState(self) -> dict[str, float | int]:
+        """Return the expected parser result for the current rendered state."""
+        return {"rows": self.grid_rows, "cols": self.grid_cols, "row": round(float(self.display_row), 2), "col": round(float(self.display_col), 2)}
+
+    def statesMatch(self, gt_state, pred_state, last_gt_state, last_pred_state) -> bool:
+        """Allow small parser and video drift around the visible object position."""
+        if not isinstance(gt_state, dict) or not isinstance(pred_state, dict):
+            return False
+        if gt_state.get("rows") != pred_state.get("rows") or gt_state.get("cols") != pred_state.get("cols"):
+            return False
+        if gt_state.get("row") is None or pred_state.get("row") is None or gt_state.get("col") is None or pred_state.get("col") is None:
+            return False
+        return abs(float(gt_state["row"]) - float(pred_state["row"])) <= 0.2 and abs(float(gt_state["col"]) - float(pred_state["col"])) <= 0.2
+
+    def _recover_object_center(self, frame_rgb: np.ndarray) -> tuple[float, float] | None:
+        """Find the small non-grid object as a compact connected component."""
+        height, width = frame_rgb.shape[:2]
+        if height == 0 or width == 0:
+            return None
+
+        quantized = (frame_rgb // 16).astype(np.int32)
+        color_bins = quantized[:, :, 0] * 256 + quantized[:, :, 1] * 16 + quantized[:, :, 2]
+        values, counts = np.unique(color_bins, return_counts=True)
+        dominant = values[counts >= max(50, int(height * width * 0.01))]
+        if dominant.size < min(4, len(values)):
+            dominant = values[np.argsort(counts)[-min(4, len(values)) :]]
+        mask = ~np.isin(color_bins, dominant)
+
+        kernel = np.ones((3, 3), dtype=np.uint8)
+        mask = cv2.morphologyEx(mask.astype(np.uint8), cv2.MORPH_OPEN, kernel)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+
+        component_count, _, stats, centroids = cv2.connectedComponentsWithStats(mask, 8)
+        best_label = None
+        best_score = -1.0
+        min_area = max(20, int(height * width * 0.0002))
+        max_box = max(8, min(height, width) // 5)
+        for label in range(1, component_count):
+            x, y, component_w, component_h, area = stats[label]
+            if area < min_area or component_w < 4 or component_h < 4:
+                continue
+            if component_w > max_box or component_h > max_box:
+                continue
+            fill_ratio = area / max(1, component_w * component_h)
+            score = area * fill_ratio
+            if score > best_score:
+                best_score = score
+                best_label = label
+
+        if best_label is None:
+            return None
+        center_x, center_y = centroids[best_label]
+        return float(center_x), float(center_y)
+
+    def _recover_grid_geometry(self, frame_rgb: np.ndarray) -> tuple[int, int, float, int, int] | None:
+        """Recover rows, columns, tile size, and board offset from the visible grid."""
+        height, width = frame_rgb.shape[:2]
+        if height == 0 or width == 0:
+            return None
+
+        background = self._corner_color(frame_rgb)
+        difference = np.abs(frame_rgb.astype(np.int16) - background).sum(axis=2)
+        mask = difference > 10
+        x_hits = np.flatnonzero(mask.sum(axis=0) > height * 0.05)
+        y_hits = np.flatnonzero(mask.sum(axis=1) > width * 0.05)
+        if x_hits.size == 0 or y_hits.size == 0:
+            return None
+
+        left, right = int(x_hits[0]), int(x_hits[-1]) + 1
+        top, bottom = int(y_hits[0]), int(y_hits[-1]) + 1
+        board_w = right - left
+        board_h = bottom - top
+
+        row_ratios = {rows: (rows * (self.height // (rows + 3))) / self.height for rows in range(4, 7)}
+        height_ratio = board_h / height
+        rows = min(row_ratios, key=lambda candidate: abs(row_ratios[candidate] - height_ratio))
+        tile_size = board_h / rows
+        cols = max(1, round(board_w / tile_size))
+        return rows, cols, tile_size, left, top
+
+    def _corner_color(self, frame_rgb: np.ndarray) -> np.ndarray:
+        """Estimate the background color from the frame corners."""
+        height, width = frame_rgb.shape[:2]
+        patch = max(3, min(height, width) // 30)
+        corners = [
+            frame_rgb[:patch, :patch],
+            frame_rgb[:patch, width - patch :],
+            frame_rgb[height - patch :, :patch],
+            frame_rgb[height - patch :, width - patch :],
+        ]
+        pixels = np.concatenate([corner.reshape(-1, 3) for corner in corners], axis=0)
+        return np.median(pixels, axis=0).astype(np.int16)
 
     def _decoy_keys(self) -> list[str]:
         """Return action keys that are not assigned to movement."""

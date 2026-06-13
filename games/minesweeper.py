@@ -546,8 +546,7 @@ class MinesweeperBase(GameBase):
         )
         return (
             f"This is {self.name}. "
-            "Use Arrow keys to move the cursor. "
-            "Press W to reveal a tile. Press S to flag a mine. "
+            "Use Arrow keys to move the cursor. Press W to reveal a tile. Press S to flag a mine. "
             f"{fast_open_text}"
             "When game ends, press A or left arrow key to restart."
         )
@@ -924,6 +923,8 @@ class MinesweeperBase(GameBase):
                 
                 if best_move:
                     tr, tc, move_type = best_move
+                    if random.random()<0.05:
+                        move_type = random.choice(["W", "S", "A"]) # Occasionally do a random action instead of the deduction to add variability. This can cause the agent to fail sometimes.
                     
                     # Generate path to target
                     new_plan = []

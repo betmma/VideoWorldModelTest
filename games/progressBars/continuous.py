@@ -1,5 +1,7 @@
 import os, random, sys, pygame
 
+import numpy as np
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 from pygameBase import ActionState
@@ -49,6 +51,34 @@ class ContinuousProgressBar(ProgressBarBase):
         filled = pygame.Rect(inner.left, inner.top, filled_width, inner.height)
         pygame.draw.rect(self.screen, self.theme["fill"], filled, border_radius=self.height // 120)
         pygame.draw.rect(self.screen, self.theme["line"], inner, width=1, border_radius=self.height // 120)
+
+    def frameToState(self, frame_rgb: np.ndarray) -> float:
+        """Recover the visible fill percentage from the rendered pixels."""
+        inner = self._frame_inner_rect(frame_rgb)
+        x_margin = max(2, inner.width // 300)
+        y_margin = max(2, inner.height // 5)
+        band = frame_rgb[inner.top + y_margin : inner.bottom - y_margin, inner.left + x_margin : inner.right - x_margin]
+        if band.size == 0:
+            return 0.0
+
+        columns = np.median(band.astype(np.int16), axis=0)
+        chromas = columns.max(axis=1) - columns.min(axis=1)
+        if chromas.size == 0:
+            return 0.0
+        if int(chromas.max() - chromas.min()) < 20:
+            return 1.0 if float(np.median(chromas)) >= 55 else 0.0
+
+        threshold = (float(chromas.max()) + float(chromas.min())) / 2
+        fill_mask = [bool(chroma >= threshold) for chroma in chromas]
+        return self._best_prefix_count(fill_mask) / len(fill_mask)
+
+    def expectedFrameToState(self) -> float:
+        """Return the expected visible fill percentage for parser self-tests."""
+        return self.fill
+
+    def statesMatch(self, gt_state, pred_state, last_gt_state, last_pred_state) -> bool:
+        """Allow a small fill-percentage error for continuous bars."""
+        return abs(float(gt_state) - float(pred_state)) <= 0.03
 
     def _choose_auto_key(self) -> str | None:
         """Choose a held key or blank wait for continuous autoplay."""

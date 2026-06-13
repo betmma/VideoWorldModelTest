@@ -171,6 +171,16 @@ def evaluateItem(game_cls, data_dir: str, item: dict[str, Any], item_index: int,
     return result
 
 
+def summarizeResults(items: list[dict[str, Any]]) -> dict[str, Any]:
+    """Compute aggregate metrics for evaluated items."""
+    evaluations = [item["evaluation"] for item in items if item.get("evaluation") is not None]
+    summary: dict[str, Any] = {"itemsEvaluated": len(evaluations), "averageAccuracy": None}
+    state_accuracies = [evaluation["stateAccuracy"] for evaluation in evaluations if "stateAccuracy" in evaluation]
+    if state_accuracies:
+        summary["averageAccuracy"] = sum(state_accuracies) / len(state_accuracies)
+    return summary
+
+
 def writeResults(run_dir: str, data: dict[str, Any]) -> None:
     """Write pipeline results to results.json."""
     with open(os.path.join(run_dir, "results.json"), "w", encoding="utf-8") as f:
@@ -198,11 +208,12 @@ def main() -> None:
     items = loadDataItems(data_dir, args.count)
     game_cls = parseGameClass(args.game_class)
     run_dir = makeRunDir(args.output_root, args.game_class)
-    results = {"gameClass": args.game_class, "modelName": MODEL_NAME, "dataDir": os.path.abspath(data_dir), "outputDir": os.path.abspath(run_dir), "items": []}
+    results = {"gameClass": args.game_class, "modelName": MODEL_NAME, "dataDir": os.path.abspath(data_dir), "outputDir": os.path.abspath(run_dir), "summary": summarizeResults([]), "items": []}
     writeResults(run_dir, results)
     for index, item in enumerate(items):
         item_result = evaluateItem(game_cls, data_dir, item, index, args)
         results["items"].append(item_result)
+        results["summary"] = summarizeResults(results["items"])
         writeResults(run_dir, results)
         print(f"Finished {index + 1}/{len(items)}")
     print(f"Saved results: {os.path.join(run_dir, 'results.json')}")

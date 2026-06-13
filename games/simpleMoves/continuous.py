@@ -1,5 +1,7 @@
 import os, random, sys
 
+import numpy as np
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 from pygameBase import ActionState
@@ -54,6 +56,27 @@ class ContinuousSimpleMove(SimpleMoveBase):
         tile_size, offset_x, offset_y = self._grid_info()
         self._draw_grid(tile_size, offset_x, offset_y)
         self._draw_object(self.x, self.y, tile_size)
+
+    def frameToState(self, frame_rgb: np.ndarray) -> dict[str, float | None]:
+        """Recover the visible object position as normalized screen coordinates."""
+        center = self._recover_object_center(frame_rgb)
+        if center is None:
+            return {"x": None, "y": None}
+        center_x, center_y = center
+        height, width = frame_rgb.shape[:2]
+        return {"x": round(center_x / width, 3), "y": round(center_y / height, 3)}
+
+    def expectedFrameToState(self) -> dict[str, float]:
+        """Return the expected normalized object position for parser self-tests."""
+        return {"x": round(float(self.x) / self.width, 3), "y": round(float(self.y) / self.height, 3)}
+
+    def statesMatch(self, gt_state, pred_state, last_gt_state, last_pred_state) -> bool:
+        """Allow small position drift for continuous movement."""
+        if not isinstance(gt_state, dict) or not isinstance(pred_state, dict):
+            return False
+        if gt_state.get("x") is None or pred_state.get("x") is None or gt_state.get("y") is None or pred_state.get("y") is None:
+            return False
+        return abs(float(gt_state["x"]) - float(pred_state["x"])) <= 0.035 and abs(float(gt_state["y"]) - float(pred_state["y"])) <= 0.035
 
     def _choose_continuous_auto_key(self) -> str | None:
         """Choose a held movement key, a decoy key, or a blank wait."""

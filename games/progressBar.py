@@ -1,5 +1,7 @@
 import os, random, sys, pygame
 
+import numpy as np
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from pygameBase import ActionState, GameBase
@@ -83,6 +85,114 @@ class ProgressBarBase(GameBase):
             color = self.theme["fill"] if index < self.level else self.theme["empty"]
             pygame.draw.rect(self.screen, color, segment, border_radius=self.height // 120)
             pygame.draw.rect(self.screen, self.theme["line"], segment, width=1, border_radius=self.height // 120)
+
+    def frameToState(self, frame_rgb: np.ndarray) -> dict[str, int]:
+        """Recover the visible discrete segment count and filled segment count."""
+        inner = self._frame_inner_rect(frame_rgb)
+        segment_count = self._recover_segment_count(frame_rgb, inner)
+        segment_colors = self._sample_segment_colors(frame_rgb, inner, segment_count)
+        chromas = [self._color_chroma(color) for color in segment_colors]
+        if not chromas:
+            return {"segments": 0, "filled": 0}
+
+        if max(chromas) - min(chromas) < 25:
+            filled = segment_count if float(np.mean(chromas)) >= 55 else 0
+        else:
+            threshold = (max(chromas) + min(chromas)) / 2
+            filled_mask = [chroma >= threshold for chroma in chromas]
+            filled = self._best_prefix_count(filled_mask)
+        return {"segments": segment_count, "filled": filled}
+
+    def expectedFrameToState(self) -> dict[str, int]:
+        """Return the expected parsed state for the current rendered frame."""
+        return {"segments": self.segment_count, "filled": self.level}
+
+    def _frame_inner_rect(self, frame_rgb: np.ndarray) -> pygame.Rect:
+        """Return the expected inner bar rectangle for an arbitrary frame size."""
+        frame_height, frame_width = frame_rgb.shape[:2]
+        bar_width = frame_width * 7 // 10
+        bar_height = frame_height // 6
+        rect = pygame.Rect((frame_width - bar_width) // 2, (frame_height - bar_height) // 2, bar_width, bar_height)
+        pad = frame_height // 35
+        return rect.inflate(-pad * 2, -pad * 2)
+
+    def _recover_segment_count(self, frame_rgb: np.ndarray, inner: pygame.Rect) -> int:
+        """Infer the number of visible segments from the contrast at candidate gaps."""
+        best_count = 6
+        best_score = -1.0
+        frame_height = frame_rgb.shape[0]
+        for segment_count in range(6, 11):
+            segment_colors = self._sample_segment_colors(frame_rgb, inner, segment_count)
+            gap_colors = self._sample_gap_colors(frame_rgb, inner, segment_count, frame_height)
+            if len(segment_colors) != segment_count or len(gap_colors) != segment_count - 1:
+                continue
+            score = 0.0
+            for index, gap_color in enumerate(gap_colors):
+                left_distance = self._color_distance(gap_color, segment_colors[index])
+                right_distance = self._color_distance(gap_color, segment_colors[index + 1])
+                score += min(left_distance, right_distance)
+            score /= max(1, len(gap_colors))
+            if score > best_score:
+                best_score = score
+                best_count = segment_count
+        return best_count
+
+    def _sample_segment_colors(self, frame_rgb: np.ndarray, inner: pygame.Rect, segment_count: int) -> list[np.ndarray]:
+        """Sample one stable center patch from each candidate segment."""
+        frame_height = frame_rgb.shape[0]
+        gap = frame_height // 80
+        segment_width = (inner.width - gap * (segment_count - 1)) // segment_count
+        if segment_width <= 0:
+            return []
+        colors = []
+        for index in range(segment_count):
+            x = inner.left + index * (segment_width + gap) + segment_width // 2
+            colors.append(self._sample_color(frame_rgb, x, inner.centery, max(1, min(segment_width, inner.height) // 6)))
+        return colors
+
+    def _sample_gap_colors(self, frame_rgb: np.ndarray, inner: pygame.Rect, segment_count: int, frame_height: int) -> list[np.ndarray]:
+        """Sample the candidate gaps between segments."""
+        gap = frame_height // 80
+        segment_width = (inner.width - gap * (segment_count - 1)) // segment_count
+        if segment_width <= 0 or gap <= 0:
+            return []
+        colors = []
+        for index in range(segment_count - 1):
+            x = inner.left + (index + 1) * segment_width + index * gap + gap // 2
+            colors.append(self._sample_color(frame_rgb, x, inner.centery, max(1, gap // 3)))
+        return colors
+
+    def _sample_color(self, frame_rgb: np.ndarray, x: int, y: int, radius: int) -> np.ndarray:
+        """Return the median RGB color around a point."""
+        height, width = frame_rgb.shape[:2]
+        left = max(0, x - radius)
+        right = min(width, x + radius + 1)
+        top = max(0, y - radius)
+        bottom = min(height, y + radius + 1)
+        return np.median(frame_rgb[top:bottom, left:right].reshape(-1, 3), axis=0)
+
+    def _color_chroma(self, color: np.ndarray) -> float:
+        """Return a simple saturation-like colorfulness score."""
+        return float(np.max(color) - np.min(color))
+
+    def _color_distance(self, a: np.ndarray, b: np.ndarray) -> float:
+        """Return a simple RGB distance."""
+        return float(np.abs(a.astype(np.int16) - b.astype(np.int16)).sum())
+
+    def _best_prefix_count(self, mask: list[bool]) -> int:
+        """Return the prefix length that best explains a left-to-right fill mask."""
+        total_true = sum(mask)
+        true_prefix = 0
+        best_count = 0
+        best_mismatches = total_true
+        for count in range(1, len(mask) + 1):
+            if mask[count - 1]:
+                true_prefix += 1
+            mismatches = count - true_prefix + total_true - true_prefix
+            if mismatches < best_mismatches:
+                best_mismatches = mismatches
+                best_count = count
+        return best_count
 
     def _decoy_keys(self) -> list[str]:
         """Return action keys that do not affect this progress bar."""

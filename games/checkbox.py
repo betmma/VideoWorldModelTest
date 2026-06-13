@@ -1,5 +1,7 @@
 import os, random, sys, pygame
 
+import numpy as np
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from pygameBase import ActionState, GameBase
@@ -63,6 +65,26 @@ class CheckboxGame(GameBase):
         stroke = self.height // 35
         points = [(rect.left + rect.width * 25 // 100, rect.top + rect.height * 53 // 100), (rect.left + rect.width * 43 // 100, rect.top + rect.height * 70 // 100), (rect.left + rect.width * 77 // 100, rect.top + rect.height * 31 // 100)]
         pygame.draw.lines(self.screen, self.theme["check"], False, points, stroke)
+
+    def frameToState(self, frame_rgb: np.ndarray) -> bool:
+        """Recover whether the checkbox is visibly checked."""
+        frame_height, frame_width = frame_rgb.shape[:2]
+        box_size = frame_height // 4
+        rect = pygame.Rect((frame_width - box_size) // 2, (frame_height - box_size) // 2, box_size, box_size)
+        inset = max(2, box_size // 9)
+        inner = frame_rgb[rect.top + inset : rect.bottom - inset, rect.left + inset : rect.right - inset]
+        if inner.size == 0:
+            return False
+
+        pixels = inner.reshape(-1, 3).astype(np.int16)
+        box_color = np.median(pixels, axis=0)
+        difference = np.abs(pixels - box_color).sum(axis=1)
+        marked_pixels = int(np.count_nonzero(difference > 60))
+        return marked_pixels > max(20, pixels.shape[0] // 40)
+
+    def expectedFrameToState(self) -> bool:
+        """Return the expected parser result for the current rendered state."""
+        return self.checked
 
     def getPrompt(self) -> str:
         """Return the prompt describing which key toggles the checkbox."""
