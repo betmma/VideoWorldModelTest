@@ -1,14 +1,31 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from ursina import Entity, Ursina, application, scene, window
 from panda3d.core import WindowProperties
 
 from engineBase import ActionState, GameBase as _EngineGameBase
 
 
+_URSINA_ASSET_ROOT = Path(__file__).resolve().parent / "games"
+
+
+def _set_ursina_asset_root() -> None:
+    """Keep Ursina's recursive asset lookup out of generated dataset folders."""
+    application.asset_folder = _URSINA_ASSET_ROOT
+    application.scenes_folder = _URSINA_ASSET_ROOT / "scenes"
+    application.scripts_folder = _URSINA_ASSET_ROOT / "scripts"
+    application.fonts_folder = _URSINA_ASSET_ROOT / "fonts"
+    application.textures_compressed_folder = _URSINA_ASSET_ROOT / "textures_compressed"
+    application.models_compressed_folder = _URSINA_ASSET_ROOT / "models_compressed"
+
+
 class UrsinaGameBase(_EngineGameBase):
     def __init__(self, headless: bool = False) -> None:
         super().__init__(headless=headless)
+
+        _set_ursina_asset_root()
 
         original_make_editor_gui = window.make_editor_gui
         window.make_editor_gui = lambda *args, **kwargs: None
